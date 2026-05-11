@@ -1,0 +1,2071 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+type AuthUser {
+  id: String!
+  email: String
+  name: String!
+  paternalSurname: String!
+  maternalSurname: String!
+  dni: String
+  memberCode: String
+  role: String!
+  status: String!
+}
+
+type AuthResponse {
+  access_token: String!
+  refresh_token: String!
+  user: AuthUser!
+}
+
+type MessageResponse {
+  message: String!
+}
+
+type UserProfile {
+  id: String!
+  email: String
+  name: String!
+  paternalSurname: String!
+  maternalSurname: String!
+  dni: String!
+  memberCode: String
+  phone: String
+  role: String!
+  status: String!
+  memberCategory: String!
+  birthdate: DateTime
+  address: String
+  district: String
+  province: String
+  department: String
+  country: String
+  createdAt: DateTime!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type Meta {
+  total: Int!
+  page: Int!
+  totalPages: Int!
+}
+
+type UsersResponse {
+  """Lista de usuarios"""
+  users: [UserProfile!]!
+  meta: Meta!
+}
+
+type Media {
+  id: Int!
+  url: String!
+  title: String!
+  resourceType: String!
+  publicId: String!
+  bytes: Int!
+  width: Int!
+  height: Int!
+  format: String
+  alt: String
+  caption: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type MediasResponse {
+  medias: [Media!]
+  meta: Meta!
+}
+
+type Discount {
+  id: Int!
+  description: String
+  percentage: Float!
+  startDate: DateTime!
+  endDate: DateTime!
+  quotesNumber: Int
+  type: String!
+  status: String!
+  targetType: DiscountTargetType!
+
+  """
+  Categorías de miembros objetivo cuando targetType=BY_CATEGORY (ej: ["JUBILADO"])
+  """
+  targetCategories: [String!]
+}
+
+"""Define a quién aplica el descuento"""
+enum DiscountTargetType {
+  ALL
+  BY_CATEGORY
+  SPECIFIC_USERS
+}
+
+type ActivityMedia {
+  """Id de la actividad académica"""
+  activityId: Int!
+
+  """Id del media asociado"""
+  mediaId: Int!
+
+  """Media asociado a la actividad"""
+  media: Media!
+
+  """Orden del media en la actividad"""
+  order: Int!
+}
+
+type Activity {
+  """Id de la actividad académica"""
+  id: Int!
+
+  """Título de la actividad académica"""
+  title: String!
+  description: String
+
+  """Tipo de actividad: SOCIAL o ACADEMIC"""
+  type: String!
+  date: DateTime!
+  finishDate: DateTime
+  stock: Int!
+
+  """Cupos usados"""
+  stockUsed: Int!
+
+  """Público objetivo: MEMBERS_ONLY | MEMBERS_AND_GUESTS | OPEN"""
+  audience: String!
+
+  """Stock disponible para participantes externos"""
+  guestStock: Int
+  href: String
+  price: Float
+
+  """Precio para participantes externos"""
+  priceInvitee: Float
+
+  """Precio para participantes externos sin sponsor"""
+  priceExternal: Float
+  venue: String
+  address: String
+  hasPrice: Boolean!
+
+  """Si la actividad ya fue pagada / liquidada"""
+  isPaid: Boolean!
+
+  """Descripción del patrón de asistencia (ej: "Lunes y Miércoles 6pm-9pm")"""
+  concurrence: String
+
+  """Días y horarios estructurados para eventos recurrentes (JSON)"""
+  days: JSON
+
+  """Patrón de finalización de la concurrencia"""
+  finishConcurrence: String
+  images: [ActivityMedia!]
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  status: String!
+  discounts: [Discount!]
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+type Activities {
+  activities: [Activity!]!
+  meta: Meta!
+}
+
+type QuotaSummary {
+  totalPeriods: Int!
+  pendingCount: Int!
+  paidCount: Int!
+  overdueCount: Int!
+  totalOwed: Float!
+  totalOverdue: Float!
+}
+
+type Member {
+  id: String!
+  email: String
+  name: String!
+  paternalSurname: String!
+  maternalSurname: String!
+  dni: String
+  memberCode: String
+  phone: String
+  birthdate: DateTime
+  address: String
+  district: String
+  province: String
+  department: String
+  country: String
+  role: String!
+  status: String!
+  memberCategory: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  quotaSummary: QuotaSummary
+}
+
+type MembersResponse {
+  members: [Member!]!
+  meta: Meta!
+}
+
+type StatusMember {
+  status: String!
+  hasPaymentPerDay: Boolean!
+  hasRegistered: Boolean!
+}
+
+type AttendeeEntity {
+  id: String!
+  activityId: Int!
+  attendeeType: AttendeeType!
+  status: String!
+  attendanceConfirmed: Boolean!
+  userId: String
+  user: Member
+  documentType: String
+  documentNumber: String
+  name: String
+  lastname: String
+  email: String
+  phone: String
+  sponsorAttendeeId: String
+  sponsoredGuests: [AttendeeEntity!]
+  createdAt: DateTime!
+}
+
+"""Tipo de asistente a una actividad"""
+enum AttendeeType {
+  MEMBER
+  INVITED
+  EXTERNAL
+}
+
+type AttendeesResponse {
+  attendees: [AttendeeEntity!]!
+  meta: Meta!
+}
+
+type QuoteAmountEntity {
+  id: Int!
+  description: String!
+  organizationId: String!
+  amount: Float!
+  currency: Currency!
+  discountApply: Boolean!
+}
+
+"""Tipo de moneda"""
+enum Currency {
+  PEN
+  USD
+}
+
+type OrganizationEntity {
+  id: String!
+  name: String!
+  code: String
+  description: String
+  logo: String
+  favicon: String
+  primaryColor: String!
+
+  """Derivado automáticamente de primaryColor (+8% luminosidad)"""
+  primaryLight: String!
+  accentColor: String!
+
+  """Derivado automáticamente de accentColor (-10% luminosidad)"""
+  accentHover: String!
+  bannerUrl: String
+  address: String
+  phone: String
+  email: String
+  website: String
+  socialMedia: JSON
+  footerText: String
+  footerLinks: JSON
+  moduleEvents: Boolean!
+  moduleReservations: Boolean!
+  moduleSurveys: Boolean!
+  moduleSupport: Boolean!
+  moduleAgreements: Boolean!
+  moduleQuotes: Boolean!
+  moraGraceDays: Int!
+  moraReminderDays: JSON!
+  moraAutoBlock: Boolean!
+
+  """Día del mes en que vence la cuota (1-28)"""
+  quotaDueDay: Int
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  quotaAmounts: [QuoteAmountEntity!]
+}
+
+type PublicOrganizationEntity {
+  id: String!
+  name: String!
+  description: String
+  code: String
+  logo: String
+  favicon: String
+  primaryColor: String!
+
+  """Derivado automáticamente de primaryColor (+8% luminosidad)"""
+  primaryLight: String!
+  accentColor: String!
+
+  """Derivado automáticamente de accentColor (-10% luminosidad)"""
+  accentHover: String!
+  bannerUrl: String
+  address: String
+  phone: String
+  email: String
+  website: String
+  socialMedia: JSON
+  footerText: String
+  footerLinks: JSON
+  moduleEvents: Boolean!
+  moduleReservations: Boolean!
+  moduleSurveys: Boolean!
+  moduleSupport: Boolean!
+  modulePosts: Boolean!
+  moduleAgreements: Boolean!
+  moduleQuotes: Boolean!
+  moraAutoBlock: Boolean!
+}
+
+type DiscountUserEntity {
+  id: Int!
+  discountId: Int!
+  userId: String!
+}
+
+type QuotaDiscountEntity {
+  id: Int!
+  description: String
+  percentage: Float!
+  startDate: DateTime!
+  endDate: DateTime!
+  quotesNumber: Int
+  status: String!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+
+  """
+  Tipo de descuento: ALL (aplica a todos los usuarios) o SPECIFIC (aplica a usuarios específicos)
+  """
+  targetType: String!
+  users: [DiscountUserEntity!]
+}
+
+type QuotaDiscountsEntity {
+  discounts: [QuotaDiscountEntity!]!
+  meta: Meta!
+}
+
+type NotificationTemplateEntity {
+  id: Int!
+  code: String!
+  name: String!
+  subject: String!
+  body: String!
+  shortBody: String
+  channels: JSON!
+  isCritical: Boolean!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type NotificationTemplatesEntity {
+  templates: [NotificationTemplateEntity!]!
+  meta: Meta!
+}
+
+type AutomationRuleEntity {
+  id: Int!
+  name: String!
+  description: String
+  trigger: AutomationTrigger!
+  config: JSON!
+  isActive: Boolean!
+  lastRunAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""Evento que dispara la regla de automatización"""
+enum AutomationTrigger {
+  QUOTA_DUE_REMINDER
+  QUOTA_OVERDUE
+  EVENT_CREATED
+  EVENT_REMINDER
+  POST_PUBLISHED
+  SURVEY_PUBLISHED
+  SUPPORT_CREATED
+  SUPPORT_ASSIGNED
+  SUPPORT_RESOLVED
+  SUPPORT_REJECTED
+  SUPPORT_OVERDUE
+  SUPPORT_REOPENED
+  MONTHLY_REPORT
+}
+
+type ReservationImage {
+  order: Int!
+  media: Media!
+}
+
+type Reservation {
+  id: Int!
+  title: String!
+  description: JSON
+  location: String
+  address: String
+  spaceType: String!
+  pricePerHour: Float
+  price: Float
+  amenities: [String!]
+  rules: JSON
+  capacity: Int!
+  status: String!
+  images: [ReservationImage!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type RequestUser {
+  id: String!
+  name: String!
+  paternalSurname: String!
+  email: String
+}
+
+type ReservationRequest {
+  id: String!
+  reservationId: Int!
+  userId: String!
+  eventName: String!
+  purpose: String
+  guestCount: Int!
+  startDate: DateTime!
+  endDate: DateTime!
+  status: String!
+  adminComment: String
+  reviewedAt: DateTime
+  reviewedBy: String
+  estimatedPrice: Float
+  invoiceId: String
+  user: RequestUser
+  reservation: Reservation
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type ReservationRequestsResponse {
+  requests: [ReservationRequest!]!
+  meta: Meta!
+}
+
+type Reservations {
+  reservations: [Reservation!]!
+  meta: Meta!
+}
+
+type Agreement {
+  id: Int!
+  title: String!
+  slug: String
+  description: String
+  content: JSON
+  contentHtml: String
+  coverImage: String
+  coverImagePublicId: String
+  href: String
+  status: String!
+  partnerName: String
+  partnerLogo: String
+  partnerWebsite: String
+  contactInfo: JSON
+  benefitSummary: String
+  category: String!
+  validFrom: DateTime
+  validUntil: DateTime
+  tags: [String!]
+  publishedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type Agreements {
+  agreements: [Agreement!]!
+  meta: Meta!
+}
+
+type Post {
+  id: Int!
+  title: String!
+  slug: String
+  description: String
+  content: JSON
+  contentHtml: String
+  coverImage: String
+  coverImagePublicId: String
+  href: String
+  author: String
+  tags: [String!]
+  type: String!
+  status: String!
+  isPinned: Boolean!
+  publishedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type Posts {
+  posts: [Post!]!
+  meta: Meta!
+}
+
+type OptionResult {
+  optionId: Int!
+  text: String!
+  count: Int!
+  percentage: Float!
+}
+
+type QuestionResult {
+  questionId: Int!
+  text: String!
+  type: String!
+  totalAnswers: Int!
+  optionResults: [OptionResult!]
+  textResponses: [String!]
+  scaleAverage: Float
+}
+
+type SurveyResults {
+  surveyId: Int!
+  title: String!
+  totalResponses: Int!
+  questionResults: [QuestionResult!]!
+}
+
+type SurveyAnswer {
+  id: Int!
+  responseId: Int!
+  questionId: Int!
+  optionId: Int
+  textValue: String
+  scaleValue: Int
+}
+
+type SurveyResponse {
+  id: Int!
+  surveyId: Int!
+  userId: String
+  isPartial: Boolean!
+  completedAt: DateTime!
+  answers: [SurveyAnswer!]
+}
+
+type SurveyOption {
+  id: Int!
+  questionId: Int!
+  text: String!
+  order: Int!
+}
+
+type SurveyQuestion {
+  id: Int!
+  surveyId: Int!
+  text: String!
+  type: String!
+  isRequired: Boolean!
+  order: Int!
+  scaleMin: Int
+  scaleMax: Int
+  scaleMinLabel: String
+  scaleMaxLabel: String
+  options: [SurveyOption!]
+}
+
+type Survey {
+  id: Int!
+  title: String!
+  description: String
+  status: String!
+  isAnonymous: Boolean!
+  startDate: DateTime
+  endDate: DateTime
+  allowMultiple: Boolean!
+  questions: [SurveyQuestion!]
+  responses: [SurveyResponse!]
+  _count: Int
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type Surveys {
+  surveys: [Survey!]!
+  meta: Meta!
+}
+
+type SupportCategory {
+  id: Int!
+  name: String!
+  description: String
+  icon: String
+  defaultPriority: String!
+  slaDays: Int
+  order: Int!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type SupportMessageAuthor {
+  id: String!
+  name: String!
+  paternalSurname: String!
+  role: String!
+}
+
+type SupportMessage {
+  id: Int!
+  supportId: Int!
+  authorId: String!
+  author: SupportMessageAuthor!
+  body: String!
+  isInternal: Boolean!
+  createdAt: DateTime!
+}
+
+type SupportUser {
+  id: String!
+  name: String!
+  paternalSurname: String!
+  maternalSurname: String!
+  memberCode: String
+}
+
+type Support {
+  id: Int!
+  topic: String!
+  details: String!
+  place: String!
+  categoryId: Int
+  category: SupportCategory
+  subjectDescription: String
+  subjectUserId: String
+  subjectUser: SupportUser
+  assignedTo: String
+  assignedName: String
+  status: String!
+  priority: String!
+  dueDate: DateTime
+  resolvedAt: DateTime
+  resolvedBy: String
+  rejectReason: String
+  reopenedAt: DateTime
+  reopenReason: String
+  respondedAt: DateTime
+  satisfactionRating: Int
+  satisfactionComment: String
+  userId: String!
+  user: SupportUser!
+  messages: [SupportMessage!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type SupportPaginated {
+  items: [Support!]!
+  total: Int!
+  page: Int!
+  pageSize: Int!
+}
+
+type NotificationEntity {
+  id: Int!
+  userId: String!
+  subject: String!
+  body: String!
+  channel: NotificationChannel!
+  status: NotificationStatus!
+  readAt: DateTime
+  createdAt: DateTime!
+}
+
+"""Canal de notificación"""
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+  PUSH
+}
+
+"""Estado de una notificación"""
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+type NotificationsPaginated {
+  notifications: [NotificationEntity!]!
+  total: Int!
+  unreadCount: Int!
+}
+
+type NotificationPreferenceEntity {
+  id: Int!
+  triggerKey: String!
+  channel: NotificationChannel!
+  enabled: Boolean!
+}
+
+type DashboardStats {
+  """Total de agremiados según los filtros"""
+  activeMembers: Int!
+
+  """% de cambio vs el mes anterior"""
+  activeMembersPercentage: Float!
+
+  """Total de encuestas según los filtros"""
+  activeSurveys: Int!
+
+  """Solicitudes de reserva con startDate hoy"""
+  allReservations: Int!
+
+  """% de cambio vs ayer"""
+  allReservationsPercentage: Float!
+}
+
+type RevenueByMonthEntry {
+  """Etiqueta del tramo (ej. "Ene", "Sem 1")"""
+  label: String!
+
+  """Monto recaudado en el tramo"""
+  amount: Float!
+}
+
+type AttendanceByMonthEntry {
+  """Etiqueta del tramo (ej. "Ene", "Sem 1")"""
+  label: String!
+
+  """Número de asistentes en el tramo"""
+  count: Int!
+}
+
+type MetricsDashboard {
+  """Total recaudado en el periodo actual"""
+  totalRevenue: Float!
+
+  """Total recaudado en el periodo anterior"""
+  revenuePrevPeriod: Float!
+
+  """Variación porcentual respecto al periodo anterior"""
+  revenueChangePercent: Float!
+
+  """Recaudación desglosada por tramo para gráfico de barras"""
+  revenueByMonth: [RevenueByMonthEntry!]!
+
+  """Tasa de mora: (pagos pendientes / total pagos) * 100"""
+  defaultRate: Float!
+
+  """Cantidad de cuotas con estado PENDIENTE"""
+  pendingQuotas: Int!
+
+  """Total de cuotas en el periodo"""
+  totalQuotas: Int!
+
+  """Miembros con estado ACTIVE"""
+  activeMembers: Int!
+
+  """Miembros con estado INACTIVE"""
+  inactiveMembers: Int!
+
+  """Miembros con estado SUSPENDED"""
+  suspendedMembers: Int!
+
+  """Suma de activos + inactivos + suspendidos"""
+  totalMembers: Int!
+
+  """Total de asistentes a actividades en el periodo"""
+  totalAttendees: Int!
+
+  """Asistencia desglosada por tramo para gráfico de línea"""
+  attendanceByMonth: [AttendanceByMonthEntry!]!
+
+  """Reclamos con estado PENDING"""
+  pendingClaims: Int!
+
+  """Reclamos con estado IN_PROGRESS"""
+  inProgressClaims: Int!
+
+  """Reclamos con estado RESOLVED"""
+  resolvedClaims: Int!
+
+  """Total de reclamos en el periodo"""
+  totalClaims: Int!
+}
+
+type Query {
+  """Verificar si ya hay administradores registrados"""
+  haveAdminRegister: Boolean!
+
+  """Verificar si un miembro ya se encuentra registrado"""
+  isMemberRegistered: Boolean!
+
+  """Obtener perfil del usuario autenticado"""
+  me: UserProfile!
+
+  """Obtener lista de usuarios con paginación, ordenamiento y búsqueda"""
+  findAllUsers(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+  ): UsersResponse!
+
+  """Obtener un usuario por su ID"""
+  findUserById(id: String!): UserProfile!
+
+  """Obtener todos los medios"""
+  findAllMedias(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String
+  ): MediasResponse!
+
+  """Obtener un medio por su ID"""
+  findOneMedia(id: Int!): Media!
+
+  """
+  Obtener lista de actividades académicas con paginación, ordenamiento, búsqueda y filtros
+  """
+  findAllActivities(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersActivityInput
+  ): Activities!
+
+  """Obtener una actividad académica por su ID para usuarios miembros"""
+  findOneActivity(id: Int!): Activity!
+
+  """Obtener una actividad académica por su ID para administradores"""
+  findOneActivityForAdmin(id: Int!): Activity!
+
+  """
+  Obtener actividades activas desde el sitio web con paginación, filtros y búsqueda
+  """
+  getActivitiesFromWebsite(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersActivityInput
+  ): Activities!
+
+  """
+  Obtener actividades para mostrar en el calendario, filtrando por rango de fechas
+  """
+  getCalendarActivities(startDate: String!, endDate: String!): [Activity!]!
+
+  """
+  Obtener lista de agremiados con paginación, ordenamiento, búsqueda y filtros
+  """
+  findAllMembers(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersMemberInput
+  ): MembersResponse!
+
+  """Obtener un agremiado por su ID"""
+  findOneMember(id: String!): Member!
+
+  """Obtener los posibles estados de un agremiado"""
+  getStatusMember: StatusMember!
+
+  """
+  Listar todos los asistentes de una actividad (miembros, invitados y externos)
+  """
+  findAttendeesByActivity(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+
+    """ID de la actividad"""
+    activityId: Int!
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersAttendeeInput
+  ): AttendeesResponse!
+
+  """Obtener invitados patrocinados por un asistente miembro"""
+  getSponsoredByAttendeeId(attendeeId: String!): [AttendeeEntity!]!
+
+  """
+  Obtener configuración pública de la organización (branding, colores, módulos activos)
+  """
+  getPublicOrganization: PublicOrganizationEntity
+
+  """Obtener configuración completa de la organización (solo admin)"""
+  getOrganization: OrganizationEntity!
+
+  """Obtener los montos de cuota de una organización"""
+  getQuoteAmounts(organizationId: String!): [QuoteAmountEntity!]!
+
+  """Obtener descuentos de cuota con paginación y filtros"""
+  getQuotaDiscounts(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: QuotaDiscountFiltersInput
+  ): QuotaDiscountsEntity!
+
+  """Obtener un descuento de cuota por ID"""
+  getQuotaDiscount(id: Int!): QuotaDiscountEntity!
+
+  """Obtener plantillas de notificación con paginación y filtros"""
+  getNotificationTemplates(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: NotificationTemplateFiltersInput
+  ): NotificationTemplatesEntity!
+
+  """Obtener una plantilla de notificación por ID"""
+  getNotificationTemplate(id: Int!): NotificationTemplateEntity!
+
+  """Obtener todas las reglas de automatización"""
+  getAutomationRules: [AutomationRuleEntity!]!
+
+  """Obtener una regla de automatización por ID"""
+  getAutomationRule(id: Int!): AutomationRuleEntity!
+  findAllReservations(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersReservationInput
+  ): Reservations!
+  getReservationsFromWebsite: [Reservation!]!
+  findOneReservation(id: Int!): Reservation!
+  findAllReservationRequests(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    reservationId: Int!
+    status: String
+  ): ReservationRequestsResponse!
+  findAllRequestWithoutReservation(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    status: String
+  ): ReservationRequestsResponse!
+  findMyReservationRequests(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+  ): ReservationRequestsResponse!
+  findAllAgreements(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersAgreementInput
+  ): Agreements!
+  findOneAgreement(id: Int!): Agreement!
+  getAgreementsFromWebsite(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+  ): Agreements!
+  findOneAgreementForWebsite(id: Int!): Agreement!
+  findAllPosts(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersPostInput
+  ): Posts!
+  findOnePost(id: Int!): Post!
+  findPostsFromBanner(type: String!): [Post!]!
+  findOnePostForWebsite(id: Int!): Post!
+  findPostsForWebsite(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    sort: String = "createdAt-desc"
+    search: String
+    type: String
+  ): Posts!
+  findAllSurveys(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    orderBy: String = "createdAt-desc"
+    search: String
+    filters: FiltersSurveyInput
+  ): Surveys!
+  findOneSurvey(id: Int!): Survey!
+  getSurveyResults(id: Int!): SurveyResults!
+  getActiveSurveys: [Survey!]!
+  findOnePublicSurvey(id: Int!): Survey!
+  supportCategories: [SupportCategory!]!
+  supports(status: String, priority: String, categoryId: Int, search: String, page: Int = 1, pageSize: Int = 20): SupportPaginated!
+  mySupports(status: String, priority: String, categoryId: Int, search: String, page: Int = 1, pageSize: Int = 20): SupportPaginated!
+  support(id: Int!): Support!
+  myNotifications(page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false): NotificationsPaginated!
+  myNotificationPreferences: [NotificationPreferenceEntity!]!
+  adminUserNotifications(userId: String!, page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false): [NotificationEntity!]!
+  getDashboardStats(memberFilters: FiltersMemberInput, surveyFilters: FiltersSurveyInput, reservationFilters: ReservationRequestFiltersInput): DashboardStats!
+  getMetricsDashboard(filters: MetricsDashboardFiltersInput): MetricsDashboard!
+}
+
+input FiltersActivityInput {
+  """Fecha de inicio del rango de búsqueda"""
+  startDate: DateTime
+
+  """Fecha de fin del rango de búsqueda"""
+  endDate: DateTime
+
+  """Filtrar por actividades con precio"""
+  hasPrice: Boolean
+
+  """Filtrar por tipo: SOCIAL o ACADEMIC"""
+  type: String
+
+  """Filtrar por estado: ACTIVE o DRAFT"""
+  status: String
+}
+
+input FiltersMemberInput {
+  """Filtrar por estado del agremiado"""
+  status: String
+
+  """Filtrar por categoría del agremiado"""
+  memberCategory: String
+}
+
+input FiltersAttendeeInput {
+  """Filtrar por estado de asistencia"""
+  status: String
+
+  """Filtrar por tipo de asistente (MEMBER, INVITED, EXTERNAL)"""
+  attendeeType: AttendeeType
+}
+
+input QuotaDiscountFiltersInput {
+  status: String
+}
+
+input NotificationTemplateFiltersInput {
+  isActive: Boolean
+}
+
+input FiltersReservationInput {
+  status: String
+  spaceType: String
+}
+
+input FiltersAgreementInput {
+  status: String
+  category: String
+}
+
+input FiltersPostInput {
+  type: [String!]
+  status: String
+  isPinned: Boolean
+}
+
+input FiltersSurveyInput {
+  status: String
+}
+
+input ReservationRequestFiltersInput {
+  status: String
+}
+
+input MetricsDashboardFiltersInput {
+  """Granularidad del periodo"""
+  period: PeriodType!
+
+  """Año del periodo (ej. 2025)"""
+  year: Int!
+
+  """Mes 1-12, requerido cuando period = MONTH"""
+  month: Int
+
+  """Trimestre 1-4, requerido cuando period = QUARTER"""
+  quarter: Int
+}
+
+"""Tipo de periodo para filtros del dashboard de métricas"""
+enum PeriodType {
+  MONTH
+  QUARTER
+  YEAR
+}
+
+type Mutation {
+  """Login para agremiados. Acepta email o DNI como identificador"""
+  signinMember(input: LoginInput!): AuthResponse!
+
+  """
+  Login exclusivo para administradores (SUPERADMIN, ADMIN, MODERATOR, ETC)
+  """
+  signinAdmin(signinAdminInput: LoginInput!): AuthResponse!
+
+  """
+  Registro de nuevos agremiados o completar registro para pre-registrados
+  """
+  register(input: RegisterInput!): AuthResponse!
+
+  """Registro del SUPERADMIN"""
+  registerSuperAdmin(signupAdminInput: CreateUserAdminInput!): AuthResponse!
+
+  """Obtener nuevos tokens usando el refresh token"""
+  refreshTokens: AuthResponse!
+
+  """Cerrar sesión y revocar tokens"""
+  signout: MessageResponse!
+
+  """Solicitar recuperación de contraseña. Envía email con enlace"""
+  forgotPassword(input: ForgotPasswordInput!): MessageResponse!
+
+  """Restablecer contraseña usando el token de recuperación"""
+  resetPassword(resetPasswordInput: ResetPasswordInput!): MessageResponse!
+
+  """Cambiar contraseña del usuario autenticado"""
+  changePassword(input: ChangePasswordInput!): MessageResponse!
+
+  """Crear un nuevo usuario. Solo accesible para SUPERADMIN"""
+  createUser(createUserInput: CreateUserInput!, role: String!): UserProfile!
+
+  """Actualizar un usuario existente"""
+  updateUser(updateUserInput: UpdateUserInput!, role: String!): UserProfile!
+
+  """Eliminar uno o más usuarios"""
+  removeUser(ids: [String!]!): Boolean!
+
+  """Cambiar el estado de uno o más usuarios"""
+  changeStatusUser(ids: [String!]!, status: String!): Boolean!
+
+  """Subir uno o varios archivos"""
+  uploadMedia(files: [Upload!]): [Media!]!
+
+  """Actualizar un medio existente"""
+  updateMedia(updateMediaInput: UpdateMediaInput!): Media!
+
+  """Eliminar uno o varios medios"""
+  removeMedia(ids: [Int!]!): Boolean!
+
+  """Crear una nueva actividad académica"""
+  createActivity(createActivityInput: CreateActivityInput!): Activity!
+
+  """Actualizar una actividad académica existente"""
+  updateActivity(updateActivityInput: UpdateActivityInput!): Activity!
+
+  """Cambiar el estado de una o más actividades académicas"""
+  changeStatusActivity(ids: [Int!]!, status: String!): Boolean!
+
+  """Eliminar una o más actividades académicas"""
+  removeActivities(ids: [Int!]!): Boolean!
+
+  """Crear un nuevo agremiado"""
+  createMember(input: CreateMemberInput!): Member!
+
+  """Actualizar un agremiado existente"""
+  updateMember(input: UpdateMemberInput!): Member!
+
+  """Eliminar uno o más agremiados"""
+  removeMembers(ids: [String!]!): Boolean!
+
+  """Cambiar el estado de uno o más agremiados"""
+  changeStatusMember(ids: [String!]!, status: String!): Boolean!
+
+  """Registrar un agremiado como asistente de una actividad"""
+  registerAttendee(input: RegisterAttendeeInput!): AttendeeEntity!
+
+  """Registrar un invitado (INVITED) o externo (EXTERNAL) en una actividad"""
+  addNonMemberAttendee(input: AddNonMemberInput!): AttendeeEntity!
+
+  """Confirmar la asistencia de un asistente (cualquier tipo)"""
+  confirmAttendance(attendeeId: String!): AttendeeEntity!
+
+  """Cancelar el registro de un miembro y liberar cupo"""
+  cancelAttendee(attendeeId: String!): AttendeeEntity!
+
+  """Eliminar un invitado o externo de una actividad"""
+  removeNonMemberAttendee(attendeeId: String!): Boolean!
+
+  """
+  Inicializa el sistema de cuotas: crea el primer periodo y asigna a todos los miembros activos. Requiere QuoteAmount y quotaDueDay configurados.
+  """
+  initializeQuotaSystem: Boolean!
+
+  """Crear o actualizar la configuración de la organización"""
+  upsertOrganization(input: UpdateOrganizationInput!): OrganizationEntity!
+
+  """Subir o reemplazar una imagen de branding (logo, favicon, banner)"""
+  uploadBrandingImage(field: BrandingImageField!, file: Upload!): OrganizationEntity!
+
+  """Eliminar una imagen de branding (logo, favicon, banner)"""
+  deleteBrandingImage(field: BrandingImageField!): OrganizationEntity!
+
+  """Crear un nuevo monto de cuota"""
+  createQuoteAmount(input: CreateQuoteAmountInput!): QuoteAmountEntity!
+
+  """Actualizar un monto de cuota"""
+  updateQuoteAmount(input: UpdateQuoteAmountInput!): QuoteAmountEntity!
+
+  """Eliminar montos de cuota por IDs"""
+  removeQuoteAmounts(ids: [Int!]!): Boolean!
+
+  """Crear un nuevo descuento de cuota"""
+  createQuotaDiscount(input: CreateQuotaDiscountInput!): QuotaDiscountEntity!
+
+  """Actualizar un descuento de cuota"""
+  updateQuotaDiscount(input: UpdateQuotaDiscountInput!): QuotaDiscountEntity!
+
+  """Cambiar el estado de descuentos de cuota (ACTIVE / DRAFT)"""
+  changeStatusQuotaDiscount(ids: [Int!]!, status: String!): Boolean!
+
+  """Eliminar descuentos de cuota por IDs"""
+  removeQuotaDiscounts(ids: [Int!]!): Boolean!
+
+  """Crear una nueva plantilla de notificación"""
+  createNotificationTemplate(input: CreateNotificationTemplateInput!): NotificationTemplateEntity!
+
+  """Actualizar una plantilla de notificación"""
+  updateNotificationTemplate(input: UpdateNotificationTemplateInput!): NotificationTemplateEntity!
+
+  """Activar o desactivar una plantilla de notificación"""
+  toggleNotificationTemplate(id: Int!): NotificationTemplateEntity!
+
+  """Eliminar plantillas de notificación"""
+  deleteNotificationsTemplate(id: [Int!]!): Boolean!
+
+  """Crear una nueva regla de automatización"""
+  createAutomationRule(input: CreateAutomationRuleInput!): AutomationRuleEntity!
+
+  """Actualizar una regla de automatización"""
+  updateAutomationRule(input: UpdateAutomationRuleInput!): AutomationRuleEntity!
+
+  """Activar o desactivar una regla de automatización"""
+  toggleAutomationRule(id: Int!): AutomationRuleEntity!
+  createReservation(createReservationInput: CreateReservationInput!): Reservation!
+  updateReservation(updateReservationInput: UpdateReservationInput!): Reservation!
+  removeReservations(ids: [Int!]!): Boolean!
+  changeStatusReservation(ids: [Int!]!, status: String!): Boolean!
+  createReservationRequest(createReservationRequestInput: CreateReservationRequestInput!): ReservationRequest!
+  reviewReservationRequest(reviewReservationRequestInput: ReviewReservationRequestInput!): ReservationRequest!
+  cancelReservationRequest(id: String!): ReservationRequest!
+  createAgreement(createAgreementInput: CreateAgreementInput!, coverImage: Upload): Agreement!
+  updateAgreement(updateAgreementInput: UpdateAgreementInput!, coverImage: Upload): Agreement!
+  removeAgreement(ids: [Int!]!): Boolean!
+  changeStatusAgreement(ids: [Int!]!, status: String!): Boolean!
+  createPost(createPostInput: CreatePostInput!, coverImage: Upload): Post!
+  updatePost(updatePostInput: UpdatePostInput!, coverImage: Upload): Post!
+  removePost(ids: [Int!]!): Boolean!
+  changeStatusPost(ids: [Int!]!, status: String!): Boolean!
+  createSurvey(createSurveyInput: CreateSurveyInput!): Survey!
+  updateSurvey(updateSurveyInput: UpdateSurveyInput!): Survey!
+  removeSurveys(ids: [Int!]!): Boolean!
+  changeStatusSurvey(ids: [Int!]!, status: String!): Boolean!
+  submitSurveyResponse(submitSurveyResponseInput: SubmitSurveyResponseInput!): SurveyResponse!
+  createSupportCategory(input: CreateSupportCategoryInput!): SupportCategory!
+  createSupport(input: CreateSupportInput!): Support!
+  reopenSupport(input: ReopenSupportInput!): Support!
+  rateSupportResolution(input: RateSupportInput!): Support!
+  addSupportMessage(input: CreateSupportMessageInput!): SupportMessage!
+  assignSupport(input: AssignSupportInput!): Support!
+  resolveSupport(input: ResolveSupportInput!): Support!
+  rejectSupport(input: RejectSupportInput!): Support!
+  closeSupport(id: Int!): Support!
+  markNotificationRead(id: Int!): Boolean!
+  markAllNotificationsRead: Int!
+  updateNotificationPreference(input: UpdateNotificationPreferenceInput!): NotificationPreferenceEntity!
+}
+
+input LoginInput {
+  """Email o DNI del usuario"""
+  identifier: String!
+  password: String!
+}
+
+input RegisterInput {
+  email: String
+  password: String!
+  name: String!
+  paternalSurname: String!
+  maternalSurname: String!
+  dni: String!
+  phone: String
+}
+
+input CreateUserAdminInput {
+  """Email de usuario, admin o superadmin"""
+  email: String!
+
+  """Apellido paterno del usuario, admin o superadmin"""
+  paternalSurname: String!
+
+  """Apellido materno del usuario, admin o superadmin"""
+  maternalSurname: String!
+
+  """Nombre del usuario, admin o superadmin"""
+  name: String!
+
+  """Contraseña del usuario, admin o superadmin"""
+  password: String!
+
+  """Confirmación de contraseña del usuario, admin o superadmin"""
+  confirmPassword: String!
+}
+
+input ForgotPasswordInput {
+  """Email o DNI del usuario"""
+  identifier: String!
+}
+
+input ResetPasswordInput {
+  token: String!
+  identifier: String!
+  newPassword: String!
+  confirmNewPassword: String!
+}
+
+input ChangePasswordInput {
+  currentPassword: String!
+  newPassword: String!
+}
+
+input CreateUserInput {
+  """Email del usuario, admin o superadmin"""
+  email: String!
+
+  """Apellido paterno del usuario, admin o superadmin"""
+  paternalSurname: String!
+
+  """Apellido materno del usuario, admin o superadmin"""
+  maternalSurname: String!
+
+  """Nombre del usuario, admin o superadmin"""
+  name: String!
+
+  """Password del usuario, admin o superadmin"""
+  password: String!
+}
+
+input UpdateUserInput {
+  """Email del usuario, admin o superadmin"""
+  email: String
+
+  """Apellido paterno del usuario, admin o superadmin"""
+  paternalSurname: String
+
+  """Apellido materno del usuario, admin o superadmin"""
+  maternalSurname: String
+
+  """Nombre del usuario, admin o superadmin"""
+  name: String
+
+  """Password del usuario, admin o superadmin"""
+  password: String
+  id: String!
+}
+
+"""The `Upload` scalar type represents a file upload."""
+scalar Upload
+
+input UpdateMediaInput {
+  """ID of the Media"""
+  id: Int!
+
+  """Title of the Media"""
+  title: String
+
+  """Alternative Text of the Media"""
+  alt: String
+
+  """Caption of the Media"""
+  caption: String
+}
+
+input CreateActivityInput {
+  """Título de la actividad"""
+  title: String!
+
+  """Descripción de la actividad"""
+  description: String
+
+  """Tipo de actividad: SOCIAL o ACADEMIC"""
+  type: String! = "SOCIAL"
+
+  """Fecha (y hora) de inicio de la actividad"""
+  date: DateTime!
+
+  """
+  Fecha (y hora) de finalización. Puede ser el día siguiente para eventos nocturnos.
+  """
+  finishDate: DateTime
+
+  """Stock / aforo de la actividad"""
+  stock: Int!
+
+  """Link externo de la actividad"""
+  href: String
+
+  """Si la actividad tiene precio"""
+  hasPrice: Boolean!
+
+  """Precio para miembros"""
+  price: Float
+
+  """Público objetivo: MEMBERS_ONLY | MEMBERS_AND_GUESTS | OPEN"""
+  audience: String!
+
+  """Cupos disponibles para no-miembros (invitados + externos)"""
+  guestStock: Int
+
+  """Precio para invitados con sponsor (invitados + externos)"""
+  priceInvitee: Float
+
+  """Precio para invitados sin sponsor (solo externos)"""
+  priceExternal: Float
+
+  """Lugar donde se realizará la actividad"""
+  venue: String
+
+  """Dirección del lugar de la actividad"""
+  address: String
+
+  """
+  Descripción del patrón de asistencia (ej: "Lunes y Miércoles de 6pm a 9pm")
+  """
+  concurrence: String
+
+  """
+  Días y horarios estructurados en JSON. Ej: [{"day":"monday","startTime":"18:00","endTime":"21:00"}]. null para eventos de un solo bloque.
+  """
+  days: JSON
+
+  """Patrón de hora de fin de cada sesión recurrente"""
+  finishConcurrence: String
+
+  """Si la actividad tiene descuento"""
+  hasDiscount: Boolean!
+
+  """Porcentaje de descuento"""
+  percentDiscount: Float
+
+  """Rango de fechas para el descuento"""
+  rangeDiscountDates: RangeDiscountDates
+
+  """IDs de Media a asociar como imágenes de la actividad"""
+  imagesIds: [Int!]
+}
+
+input RangeDiscountDates {
+  """Desde fecha del rango de descuento"""
+  from: DateTime!
+
+  """Hasta fecha del rango de descuento"""
+  to: DateTime!
+}
+
+input UpdateActivityInput {
+  """Título de la actividad"""
+  title: String
+
+  """Descripción de la actividad"""
+  description: String
+
+  """Tipo de actividad: SOCIAL o ACADEMIC"""
+  type: String = "SOCIAL"
+
+  """Fecha (y hora) de inicio de la actividad"""
+  date: DateTime
+
+  """
+  Fecha (y hora) de finalización. Puede ser el día siguiente para eventos nocturnos.
+  """
+  finishDate: DateTime
+
+  """Stock / aforo de la actividad"""
+  stock: Int
+
+  """Link externo de la actividad"""
+  href: String
+
+  """Si la actividad tiene precio"""
+  hasPrice: Boolean
+
+  """Precio para miembros"""
+  price: Float
+
+  """Público objetivo: MEMBERS_ONLY | MEMBERS_AND_GUESTS | OPEN"""
+  audience: String
+
+  """Cupos disponibles para no-miembros (invitados + externos)"""
+  guestStock: Int
+
+  """Precio para invitados con sponsor (invitados + externos)"""
+  priceInvitee: Float
+
+  """Precio para invitados sin sponsor (solo externos)"""
+  priceExternal: Float
+
+  """Lugar donde se realizará la actividad"""
+  venue: String
+
+  """Dirección del lugar de la actividad"""
+  address: String
+
+  """
+  Descripción del patrón de asistencia (ej: "Lunes y Miércoles de 6pm a 9pm")
+  """
+  concurrence: String
+
+  """
+  Días y horarios estructurados en JSON. Ej: [{"day":"monday","startTime":"18:00","endTime":"21:00"}]. null para eventos de un solo bloque.
+  """
+  days: JSON
+
+  """Patrón de hora de fin de cada sesión recurrente"""
+  finishConcurrence: String
+
+  """Si la actividad tiene descuento"""
+  hasDiscount: Boolean
+
+  """Porcentaje de descuento"""
+  percentDiscount: Float
+
+  """Rango de fechas para el descuento"""
+  rangeDiscountDates: RangeDiscountDates
+
+  """IDs de Media a asociar como imágenes de la actividad"""
+  imagesIds: [Int!]
+  id: Int!
+}
+
+input CreateMemberInput {
+  email: String!
+  name: String!
+  paternalSurname: String!
+  maternalSurname: String!
+  password: String!
+  dni: String
+  memberCode: String
+  phone: String
+  birthdate: DateTime
+  address: String
+  district: String
+  province: String
+  department: String
+  country: String
+
+  """Categoría: REGULAR, JUBILADO, VITALICIO, HONORARIO"""
+  memberCategory: String
+}
+
+input UpdateMemberInput {
+  email: String
+  name: String
+  paternalSurname: String
+  maternalSurname: String
+  password: String
+  dni: String
+  memberCode: String
+  phone: String
+  birthdate: DateTime
+  address: String
+  district: String
+  province: String
+  department: String
+  country: String
+
+  """Categoría: REGULAR, JUBILADO, VITALICIO, HONORARIO"""
+  memberCategory: String
+  id: String!
+}
+
+input RegisterAttendeeInput {
+  """ID del usuario (agremiado) a registrar"""
+  userId: String!
+
+  """ID de la actividad"""
+  activityId: Int!
+}
+
+input AddNonMemberInput {
+  """ID de la actividad"""
+  activityId: Int!
+
+  """INVITED (traído por un miembro) o EXTERNAL (externo directo)"""
+  attendeeType: AttendeeType!
+
+  """Tipo de documento"""
+  documentType: String!
+
+  """Número de documento"""
+  documentNumber: String!
+
+  """Nombre"""
+  name: String!
+
+  """Apellido"""
+  lastname: String
+  email: String
+  phone: String
+
+  """ID del ActivityAttendee sponsor (requerido si attendeeType=INVITED)"""
+  sponsorAttendeeId: String
+}
+
+input UpdateOrganizationInput {
+  name: String
+  code: String
+  description: String
+
+  """
+  Color primario en hex (#RRGGBB). primaryLight se genera automáticamente.
+  """
+  primaryColor: String
+
+  """
+  Color de acento en hex (#RRGGBB). accentHover se genera automáticamente.
+  """
+  accentColor: String
+  address: String
+  phone: String
+  email: String
+  website: String
+  socialMedia: JSON
+  footerText: String
+  footerLinks: JSON
+  moduleEvents: Boolean
+  moduleReservations: Boolean
+  moduleSurveys: Boolean
+  moduleSupport: Boolean
+  moduleAgreements: Boolean
+  moduleQuotes: Boolean
+  moraGraceDays: Float
+  moraReminderDays: JSON
+  moraAutoBlock: Boolean
+
+  """Día del mes en que vence la cuota (1-28)"""
+  quotaDueDay: Float
+}
+
+"""Campo de imagen de branding de la organización"""
+enum BrandingImageField {
+  LOGO
+  FAVICON
+  BANNER
+}
+
+input CreateQuoteAmountInput {
+  description: String!
+  organizationId: String!
+  amount: Float!
+  currency: Currency = PEN
+  discountApply: Boolean = false
+}
+
+input UpdateQuoteAmountInput {
+  description: String
+  organizationId: String
+  amount: Float
+  currency: Currency = PEN
+  discountApply: Boolean = false
+  id: Int!
+}
+
+input CreateQuotaDiscountInput {
+  description: String
+  percentage: Float!
+  startDate: DateTime!
+  endDate: DateTime!
+  quotesNumber: Int
+
+  """IDs de usuarios a los que aplica el descuento"""
+  userIds: [String!]
+
+  """Si el descuento aplica para todos los usuarios"""
+  applyToAllUsers: Boolean! = true
+}
+
+input UpdateQuotaDiscountInput {
+  description: String
+  percentage: Float
+  startDate: DateTime
+  endDate: DateTime
+  quotesNumber: Int
+
+  """IDs de usuarios a los que aplica el descuento"""
+  userIds: [String!]
+
+  """Si el descuento aplica para todos los usuarios"""
+  applyToAllUsers: Boolean = true
+  id: Int!
+}
+
+input CreateNotificationTemplateInput {
+  code: String!
+  name: String!
+  subject: String!
+  body: String!
+  shortBody: String
+  channels: [String!] = ["EMAIL"]
+  isCritical: Boolean = false
+  isActive: Boolean = true
+}
+
+input UpdateNotificationTemplateInput {
+  code: String
+  name: String
+  subject: String
+  body: String
+  shortBody: String
+  channels: [String!] = ["EMAIL"]
+  isCritical: Boolean = false
+  isActive: Boolean = true
+  id: Int!
+}
+
+input CreateAutomationRuleInput {
+  name: String!
+  description: String
+  trigger: AutomationTrigger!
+  config: JSON!
+  isActive: Boolean = true
+}
+
+input UpdateAutomationRuleInput {
+  name: String
+  description: String
+  trigger: AutomationTrigger
+  config: JSON
+  isActive: Boolean = true
+  id: Int!
+}
+
+input CreateReservationInput {
+  title: String!
+  description: JSON
+  location: String
+  address: String
+  spaceType: String
+  pricePerHour: Float
+  price: Float
+  capacity: Int!
+  amenities: [String!]
+  rules: JSON
+  mediaIds: [Int!]
+}
+
+input UpdateReservationInput {
+  title: String
+  description: JSON
+  location: String
+  address: String
+  spaceType: String
+  pricePerHour: Float
+  price: Float
+  capacity: Int
+  amenities: [String!]
+  rules: JSON
+  mediaIds: [Int!]
+  id: Int!
+}
+
+input CreateReservationRequestInput {
+  reservationId: Int!
+  eventName: String!
+  purpose: String
+  guestCount: Int!
+  startDate: DateTime!
+  endDate: DateTime!
+}
+
+input ReviewReservationRequestInput {
+  id: String!
+  status: String!
+  adminComment: String
+}
+
+input CreateAgreementInput {
+  title: String!
+  slug: String
+  description: String
+  content: JSON
+  contentHtml: String
+  href: String
+  partnerName: String
+  partnerLogo: String
+  partnerWebsite: String
+  contactInfo: ContactInfoInput
+  benefitSummary: String
+  category: String
+  validFrom: DateTime
+  validUntil: DateTime
+  tags: [String!]
+  status: String
+  publishedAt: DateTime
+}
+
+input ContactInfoInput {
+  name: String
+  email: String
+  phone: String
+}
+
+input UpdateAgreementInput {
+  title: String
+  slug: String
+  description: String
+  content: JSON
+  contentHtml: String
+  href: String
+  partnerName: String
+  partnerLogo: String
+  partnerWebsite: String
+  contactInfo: ContactInfoInput
+  benefitSummary: String
+  category: String
+  validFrom: DateTime
+  validUntil: DateTime
+  tags: [String!]
+  status: String
+  publishedAt: DateTime
+  id: Int!
+}
+
+input CreatePostInput {
+  title: String!
+  slug: String
+  description: String
+  content: JSON
+  contentHtml: String
+  href: String
+  author: String
+  tags: [String!]
+  type: String!
+  status: String
+  isPinned: Boolean
+  publishedAt: DateTime
+}
+
+input UpdatePostInput {
+  title: String
+  slug: String
+  description: String
+  content: JSON
+  contentHtml: String
+  href: String
+  author: String
+  tags: [String!]
+  type: String
+  status: String
+  isPinned: Boolean
+  publishedAt: DateTime
+  id: Int!
+}
+
+input CreateSurveyInput {
+  title: String!
+  description: String
+  isAnonymous: Boolean
+  startDate: DateTime
+  endDate: DateTime
+  allowMultiple: Boolean
+  questions: [CreateSurveyQuestionInput!]
+}
+
+input CreateSurveyQuestionInput {
+  text: String!
+  type: String!
+  isRequired: Boolean
+  order: Int
+  scaleMin: Int
+  scaleMax: Int
+  scaleMinLabel: String
+  scaleMaxLabel: String
+  options: [CreateSurveyOptionInput!]
+}
+
+input CreateSurveyOptionInput {
+  text: String!
+  order: Int
+}
+
+input UpdateSurveyInput {
+  title: String
+  description: String
+  isAnonymous: Boolean
+  startDate: DateTime
+  endDate: DateTime
+  allowMultiple: Boolean
+  questions: [UpdateSurveyQuestionInput!]
+  id: Int!
+}
+
+input UpdateSurveyQuestionInput {
+  id: Int
+  text: String!
+  type: String!
+  isRequired: Boolean
+  order: Int
+  scaleMin: Int
+  scaleMax: Int
+  scaleMinLabel: String
+  scaleMaxLabel: String
+  options: [UpdateSurveyOptionInput!]
+}
+
+input UpdateSurveyOptionInput {
+  id: Int
+  text: String!
+  order: Int
+}
+
+input SubmitSurveyResponseInput {
+  surveyId: Int!
+  answers: [SubmitSurveyAnswerInput!]!
+}
+
+input SubmitSurveyAnswerInput {
+  questionId: Int!
+  optionId: Int
+  textValue: String
+  scaleValue: Int
+}
+
+input CreateSupportCategoryInput {
+  name: String!
+  description: String
+  icon: String
+  defaultPriority: String
+  slaDays: Int
+  order: Int
+  isActive: Boolean
+}
+
+input CreateSupportInput {
+  topic: String!
+  details: String!
+  place: String!
+  categoryId: Int
+  subjectDescription: String
+  subjectUserId: String
+}
+
+input ReopenSupportInput {
+  supportId: Int!
+  reopenReason: String!
+}
+
+input RateSupportInput {
+  supportId: Int!
+  rating: Int!
+  comment: String
+}
+
+input CreateSupportMessageInput {
+  supportId: Int!
+  body: String!
+  isInternal: Boolean = false
+}
+
+input AssignSupportInput {
+  supportId: Int!
+  assignedTo: String!
+  assignedName: String!
+  dueDate: DateTime
+  priority: String
+}
+
+input ResolveSupportInput {
+  supportId: Int!
+  resolutionBody: String!
+}
+
+input RejectSupportInput {
+  supportId: Int!
+  rejectReason: String!
+}
+
+input UpdateNotificationPreferenceInput {
+  triggerKey: String!
+  channel: NotificationChannel!
+  enabled: Boolean!
+}

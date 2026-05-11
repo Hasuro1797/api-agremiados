@@ -1,0 +1,1377 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// CONFIGURACIÓN DE LA ORGANIZACIÓN (WHITE-LABEL)
+// ============================================
+
+model Organization {
+  id          String  @id @default(uuid())
+  name        String // "Colegio de Abogados de Arequipa"
+  code        String? @unique // "CAA"
+  description String?
+
+  // Branding
+  logo         String?
+  favicon      String?
+  primaryColor String  @default("#232c57")
+  primaryLight String  @default("#2e3a75") // derivado del primary (generado automáticamente)
+  accentColor  String  @default("#FF7043")
+  accentHover  String  @default("#E05E35") // derivado del accent (generado automáticamente)
+  bannerUrl    String?
+
+  // Contact info (footer)
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  socialMedia Json? // { facebook: "...", instagram: "...", twitter: "..." }
+  footerText  String?
+  footerLinks Json? // [{ label: "Términos", url: "..." }]
+
+  // Module toggles (white-label: activar/desactivar secciones)
+  moduleEvents       Boolean @default(true)
+  moduleReservations Boolean @default(true)
+  moduleSurveys      Boolean @default(true)
+  moduleSupport      Boolean @default(true)
+  moduleAgreements   Boolean @default(true)
+  moduleQuotes       Boolean @default(true)
+  modulePosts        Boolean @default(true)
+  moduleSanctions    Boolean @default(true)
+
+  // Cuotas config
+  quotaDueDay Int? // dia del mes en que vence la cuota (1-28)
+
+  // Mora / automation config
+  moraGraceDays    Int     @default(7)
+  moraReminderDays Json    @default("[5, 1, -7, -30]") // dias relativos al vencimiento
+  moraAutoBlock    Boolean @default(false) // bloquear servicios automaticamente
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quotaAmounts  QuoteAmount[]
+  billingConfig BillingConfig?
+
+  @@map("organizations")
+}
+
+model QuoteAmount {
+  id             Int          @id @default(autoincrement())
+  description    String
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  amount         Float
+  currency       Currency     @default(PEN)
+  discountApply  Boolean      @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("quote_amounts")
+}
+
+// ============================================
+// FACTURACIÓN ELECTRÓNICA SUNAT (Configuración)
+// ============================================
+
+model BillingConfig {
+  id             Int          @id @default(autoincrement())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Datos del emisor (SUNAT)
+  ruc           String // RUC del emisor (11 dígitos)
+  razonSocial   String
+  comercialName String? // nombre comercial (opcional)
+
+  // Credenciales SOL
+  solUser String // usuario SOL (ej: MODDATOS)
+  solPass String // clave SOL
+
+  // Certificado digital (PFX)
+  certPfxBase64 String? @db.Text // certificado .pfx en base64
+  certPassword  String? // contraseña del certificado
+
+  // Dirección fiscal del emisor
+  ubigeo     String? // código ubigeo INEI (ej: "040101")
+  address    String?
+  district   String?
+  province   String?
+  department String?
+
+  // Entorno: false = beta/homologación, true = producción SUNAT
+  production Boolean @default(false)
+  isActive   Boolean @default(true)
+
+  series DocumentSeries[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("billing_configs")
+}
+
+// Series y correlativos por tipo de comprobante (F001, B001, etc.)
+model DocumentSeries {
+  id              Int           @id @default(autoincrement())
+  billingConfigId Int
+  billingConfig   BillingConfig @relation(fields: [billingConfigId], references: [id], onDelete: Cascade)
+
+  tipoDoc     SunatDocType // FACTURA, BOLETA, NOTA_CREDITO, NOTA_DEBITO
+  serie       String // "F001", "B001", "FC01", "BC01"
+  correlativo Int          @default(1) // próximo correlativo a usar
+  description String?
+  isActive    Boolean      @default(true)
+
+  invoices InvoiceHeader[]
+
+  @@unique([billingConfigId, tipoDoc, serie])
+  @@index([billingConfigId, tipoDoc])
+  @@map("document_series")
+}
+
+// ============================================
+// USUARIOS UNIFICADOS (ex-User + ex-Layer)
+// ============================================
+
+model User {
+  id           String  @id @default(uuid())
+  email        String? @unique
+  password     String
+  refreshToken String?
+
+  // Datos personales
+  name            String
+  paternalSurname String
+  maternalSurname String
+  dni             String?   @unique
+  memberCode      String?   @unique // CIP u otro codigo colegial
+  phone           String?
+  birthdate       DateTime?
+
+  // Direccion
+  address    String?
+  district   String?
+  province   String?
+  department String?
+  country    String?
+
+  // Rol y estado
+  role           Role           @default(MEMBER)
+  status         UserStatus     @default(ACTIVE)
+  memberCategory MemberCategory @default(REGULAR)
+  acceptedTerms  Boolean        @default(false)
+  hasRegistered  Boolean        @default(false)
+
+  // Referencias externas (migracion de datos legacy)
+  externalPersonId   String?
+  externalAddressId  String?
+  externalDistrictId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  profileImage            ProfileImage?
+  activityAttendees       ActivityAttendee[]
+  supports                Support[]
+  supportSubjects         Support[]                @relation("SupportSubject")
+  supportMessages         SupportMessage[]         @relation("SupportMessageAuthor")
+  invoices                InvoiceHeader[]
+  quotaPayments           QuotaPayment[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  discountUsers           DiscountUser[]
+  surveyResponses         SurveyResponse[]
+  auditLogs               AuditLog[]
+  reservationRequests     ReservationRequest[]
+  sanctions               Sanction[]
+  certificates            Certificate[]
+
+  @@index([email, name, dni, memberCode])
+  @@index([role, status])
+  @@map("users")
+}
+
+// ============================================
+// AUTENTICACIÓN
+// ============================================
+
+model RecoveryPassword {
+  id         Int      @id @default(autoincrement())
+  identifier String   @unique
+  token      String
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([identifier, token])
+  @@map("recovery_passwords")
+}
+
+model RevokedToken {
+  id    Int    @id @default(autoincrement())
+  token String @unique
+
+  @@map("revoked_tokens")
+}
+
+// ============================================
+// ACTIVIDADES (unifica SocialActivity + AcademicActivity)
+// ============================================
+
+model Activity {
+  id          Int          @id @default(autoincrement())
+  title       String
+  description String?
+  type        ActivityType @default(SOCIAL)
+  date        DateTime
+  finishDate  DateTime?
+
+  // Precio
+  hasPrice      Boolean @default(false)
+  price         Float?
+  priceInvitee  Float? // precio para invitados con sponsor (miembro que los trae)
+  priceExternal Float? // precio para externos sin sponsor
+
+  // Capacidad
+  stock      Int
+  stockUsed  Int              @default(0)
+  guestStock Int              @default(0) // cupo total de no-miembros (invitados + externos)
+  audience   ActivityAudience @default(MEMBERS_ONLY) // quién puede asistir
+
+  // Programacion del evento
+  concurrence       String?
+  days              Json?
+  finishConcurrence String?
+  isPaid            Boolean @default(false)
+  venue             String? // "Auditorio UNSA", "Sede Central"
+  address           String? // dirección si es externo
+
+  // Estado
+  status Status  @default(DRAFT)
+  href   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  attendees    ActivityAttendee[]
+  images       ActivityMedia[]
+  discounts    Discount[]
+  certificates Certificate[]
+
+  @@index([type, status, date])
+  @@index([status])
+  @@map("activities")
+}
+
+// Tabla pivote explicita (reemplaza relacion implicita many-to-many)
+model ActivityMedia {
+  activityId Int
+  mediaId    Int
+  order      Int      @default(0) // para ordenar imagenes
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  media      Media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([activityId, mediaId])
+  @@map("activity_media")
+}
+
+// Unifica miembros, invitados (con sponsor) y externos (sin sponsor) en un solo modelo.
+// attendeeType=MEMBER   → userId requerido, campos de documento null
+// attendeeType=INVITED  → documentNumber + sponsorAttendeeId requeridos, userId null
+// attendeeType=EXTERNAL → documentNumber requerido, userId null, sin sponsor
+model ActivityAttendee {
+  id         String @id @default(uuid())
+  activityId Int
+
+  // Ruta miembro: usuario registrado en el sistema
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  // Ruta no-miembro: datos snapshot para SUNAT y control de asistencia
+  documentType   DocumentType?
+  documentNumber String?
+  name           String?
+  lastname       String?
+  email          String?
+  phone          String?
+
+  // Sponsor opcional: miembro que trajo a este invitado
+  sponsorAttendeeId String?
+  sponsorAttendee   ActivityAttendee?  @relation("Sponsor", fields: [sponsorAttendeeId], references: [id], onDelete: SetNull)
+  sponsoredGuests   ActivityAttendee[] @relation("Sponsor")
+
+  attendeeType        AttendeeType     @default(MEMBER)
+  status              AttendanceStatus @default(ACEPTADO)
+  attendanceConfirmed Boolean          @default(false)
+
+  activity  Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  // userId único por actividad (Postgres permite múltiples NULL → no conflicto para no-miembros)
+  @@unique([userId, activityId])
+  // documento único por actividad para no-miembros (idem: múltiples NULL permitidos)
+  @@unique([documentNumber, activityId])
+  @@index([activityId, status])
+  @@index([activityId, attendeeType])
+  @@map("activity_attendees")
+}
+
+// ============================================
+// DESCUENTOS
+// ============================================
+
+model Discount {
+  id           Int          @id @default(autoincrement())
+  description  String?
+  percentage   Float
+  startDate    DateTime
+  endDate      DateTime
+  type         DiscountType
+  quotesNumber Int?
+  status       Status       @default(ACTIVE)
+  activityId   Int?
+  activity     Activity?    @relation(fields: [activityId], references: [id])
+
+  // Alcance del descuento
+  targetType       DiscountTargetType @default(SPECIFIC_USERS)
+  targetCategories Json? // ["JUBILADO", "VITALICIO"] cuando targetType=BY_CATEGORY
+
+  users DiscountUser[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("discounts")
+}
+
+model DiscountUser {
+  id         Int      @id @default(autoincrement())
+  discountId Int
+  userId     String
+  discount   Discount @relation(fields: [discountId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([discountId, userId])
+  @@map("discount_users")
+}
+
+// ============================================
+// CUOTAS (sistema con historial real)
+// ============================================
+
+// Define los periodos de cuota (ej: Enero 2026, Febrero 2026...)
+model QuotaPeriod {
+  id      Int      @id @default(autoincrement())
+  year    Int
+  month   Int
+  amount  Float
+  dueDate DateTime
+  status  Status   @default(ACTIVE)
+
+  payments QuotaPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([year, month])
+  @@map("quota_periods")
+}
+
+// Registro individual de pago por agremiado por periodo
+model QuotaPayment {
+  id        Int           @id @default(autoincrement())
+  userId    String
+  periodId  Int
+  status    PaymentStatus @default(PENDIENTE)
+  paidAt    DateTime?
+  invoiceId String? // referencia al InvoiceHeader si pago via plataforma
+
+  user   User        @relation(fields: [userId], references: [id])
+  period QuotaPeriod @relation(fields: [periodId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, periodId])
+  @@index([userId, status])
+  @@index([status])
+  @@map("quota_payments")
+}
+
+// ============================================
+// CONTENIDO - Posts y Convenios (TipTap rich text)
+// ============================================
+// TipTap guarda el contenido como JSON (document tree) y opcionalmente
+// como HTML renderizado. Las imagenes se embeben directamente en el
+// contenido via Cloudinary/upload — ya no se necesitan tablas pivote.
+
+model Post {
+  id                 Int       @id @default(autoincrement())
+  title              String
+  slug               String?   @unique
+  description        String? // resumen corto para cards/listados
+  content            Json? // TipTap JSON document tree
+  contentHtml        String? // HTML renderizado del contenido (para SEO/emails)
+  coverImage         String? // URL de imagen de portada
+  coverImagePublicId String? // Cloudinary public_id para eliminar
+  href               String?
+  status             Status    @default(DRAFT)
+  type               PostType  @default(COMMUNICATIONS)
+  isPinned           Boolean   @default(false) // fijar en la parte superior
+  publishedAt        DateTime? // fecha de publicacion real (puede ser programada)
+  author             String? // nombre del autor (opcional, para mostrar en cards)
+  tags               Json? // array de strings para categorizar el contenido
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, status, publishedAt])
+  @@index([isPinned, publishedAt])
+  @@map("posts")
+}
+
+model Agreement {
+  id                 Int       @id @default(autoincrement())
+  title              String
+  slug               String?   @unique
+  description        String? // resumen corto
+  content            Json? // TipTap JSON document tree
+  contentHtml        String? // HTML renderizado
+  coverImage         String? // URL de imagen de portada
+  coverImagePublicId String? // Cloudinary public_id para eliminar
+  href               String?
+  status             Status    @default(DRAFT)
+  publishedAt        DateTime?
+
+  // Datos del convenio/socio
+  partnerName    String? // "Universidad Nacional de San Agustín"
+  partnerLogo    String? // URL del logo del socio
+  partnerWebsite String? // sitio web del socio
+  contactInfo    Json? // { name, email, phone }
+  benefitSummary String? // "20% descuento en maestrías"
+  category       AgreementCategory @default(EDUCATION)
+  validFrom      DateTime? // inicio de vigencia
+  validUntil     DateTime?
+  tags           Json? // ["educación", "descuento"] 
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, category])
+  @@index([validUntil])
+  @@map("agreements")
+}
+
+// ============================================
+// ENCUESTAS (sistema propio, reemplaza Google Forms)
+// ============================================
+
+model Survey {
+  id            Int          @id @default(autoincrement())
+  title         String
+  description   String?
+  status        SurveyStatus @default(DRAFT)
+  isAnonymous   Boolean      @default(false) // configurable por encuesta
+  startDate     DateTime?
+  endDate       DateTime?
+  allowMultiple Boolean      @default(false) // permitir responder mas de una vez
+
+  questions SurveyQuestion[]
+  responses SurveyResponse[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("surveys")
+}
+
+model SurveyQuestion {
+  id         Int          @id @default(autoincrement())
+  surveyId   Int
+  text       String // "¿Qué opina sobre...?"
+  type       QuestionType // SINGLE_CHOICE, MULTIPLE_CHOICE, TEXT, SCALE
+  isRequired Boolean      @default(true)
+  order      Int          @default(0)
+
+  // Config para SCALE
+  scaleMin      Int?    @default(1)
+  scaleMax      Int?    @default(5)
+  scaleMinLabel String? // "Muy malo"
+  scaleMaxLabel String? // "Excelente"
+
+  survey  Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  options SurveyOption[]
+  answers SurveyAnswer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([surveyId, order])
+  @@map("survey_questions")
+}
+
+model SurveyOption {
+  id         Int    @id @default(autoincrement())
+  questionId Int
+  text       String // "Opción A", "Opción B"...
+  order      Int    @default(0)
+
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answers  SurveyAnswer[]
+
+  @@index([questionId, order])
+  @@map("survey_options")
+}
+
+// Una respuesta completa de un usuario a una encuesta
+model SurveyResponse {
+  id        Int            @id @default(autoincrement())
+  surveyId  Int
+  userId    String? // null si la encuesta es anonima
+  isPartial Boolean        @default(false)
+  survey    Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  user      User?          @relation(fields: [userId], references: [id])
+  answers   SurveyAnswer[]
+
+  completedAt DateTime @default(now())
+
+  @@index([surveyId])
+  @@index([userId])
+  @@map("survey_responses")
+}
+
+// Cada respuesta individual a una pregunta
+model SurveyAnswer {
+  id         Int     @id @default(autoincrement())
+  responseId Int
+  questionId Int
+  optionId   Int? // para SINGLE_CHOICE / MULTIPLE_CHOICE
+  textValue  String? // para TEXT
+  scaleValue Int? // para SCALE
+
+  response SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  question SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  option   SurveyOption?  @relation(fields: [optionId], references: [id])
+
+  @@index([responseId])
+  @@index([questionId])
+  @@map("survey_answers")
+}
+
+// ============================================
+// SOPORTE / RECLAMOS (con workflow mejorado)
+// ============================================
+
+// Categorías configurables por el admin de cada colegio
+model SupportCategory {
+  id              Int      @id @default(autoincrement())
+  name            String // "Pagos", "Facturación", "Sistema", etc.
+  description     String?
+  icon            String? // nombre de icono para el frontend
+  defaultPriority Priority @default(MEDIUM)
+  slaDays         Int? // dias para auto-calcular dueDate al crear ticket
+  order           Int      @default(0)
+  isActive        Boolean  @default(true)
+
+  supports Support[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("support_categories")
+}
+
+model Support {
+  id      Int    @id @default(autoincrement())
+  topic   String
+  details String
+  place   String // lugar donde ocurrió el incidente
+
+  // Categoría y sujeto del reclamo
+  categoryId         Int?
+  category           SupportCategory? @relation(fields: [categoryId], references: [id])
+  subjectDescription String? // "Personal de limpieza del 3er piso" (texto libre)
+  subjectUserId      String? // opcional: si el sujeto SÍ está registrado
+  subjectUser        User?            @relation("SupportSubject", fields: [subjectUserId], references: [id])
+
+  // Workflow de asignación
+  assignedTo   String? // userId del responsable
+  assignedName String?
+  status       SupportStatus @default(PENDING)
+  priority     Priority      @default(MEDIUM)
+  dueDate      DateTime? // fecha límite (auto-calc desde category.slaDays)
+
+  // Resolución
+  resolvedAt   DateTime?
+  resolvedBy   String? // userId del admin que cerró el ticket
+  rejectReason String? // motivo si status = REJECTED
+
+  // Reapertura
+  reopenedAt   DateTime?
+  reopenReason String?
+
+  // Seguimiento de operaciones internas
+  respondedAt       DateTime? // primera vez que un admin respondió
+  overdueNotifiedAt DateTime? // evita alertas duplicadas del cron
+
+  // Satisfacción post-resolución (opcional, llenado por el agremiado)
+  satisfactionRating  Int? // 1-5
+  satisfactionComment String?
+
+  // Relaciones
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messages SupportMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, priority])
+  @@index([status, dueDate])
+  @@index([userId])
+  @@map("supports")
+}
+
+model SupportMessage {
+  id         Int     @id @default(autoincrement())
+  supportId  Int
+  authorId   String
+  body       String
+  isInternal Boolean @default(false) // nota privada entre admins, no visible al agremiado
+
+  support     Support             @relation(fields: [supportId], references: [id], onDelete: Cascade)
+  author      User                @relation("SupportMessageAuthor", fields: [authorId], references: [id])
+  attachments SupportAttachment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([supportId, createdAt])
+  @@map("support_messages")
+}
+
+// Pivote explícito: adjuntos de un mensaje de soporte (media con context=SUPPORT)
+model SupportAttachment {
+  messageId Int
+  mediaId   Int
+  order     Int            @default(0)
+  message   SupportMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  media     Media          @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, mediaId])
+  @@map("support_attachments")
+}
+
+// ============================================
+// RESERVAS / LOCALES
+// ============================================
+
+model Reservation {
+  id           Int                  @id @default(autoincrement())
+  title        String
+  description  Json?
+  location     String?
+  address      String?
+  spaceType    SpaceType            @default(HALL)
+  pricePerHour Float? // precio por hora (null = gratuito)
+  price        Float? // precio fijo (null = gratuito, se ignora si pricePerHour tiene valor)
+  amenities    Json? // ["proyector", "wifi", "estacionamiento", "aire_acondicionado"]
+  rules        Json? // reglas de uso del espacio
+  capacity     Int
+  status       Status               @default(DRAFT)
+  images       ReservationMedia[]
+  requests     ReservationRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([title, status])
+  @@index([spaceType, status])
+  @@map("reservations")
+}
+
+model ReservationMedia {
+  reservationId Int
+  mediaId       Int
+  order         Int         @default(0)
+  reservation   Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  media         Media       @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@id([reservationId, mediaId])
+  @@map("reservation_media")
+}
+
+model ReservationRequest {
+  id            String @id @default(uuid())
+  reservationId Int
+  userId        String
+
+  // Datos del evento
+  eventName  String // "Conferencia de Derecho Laboral"
+  purpose    String? // propósito / descripción del evento
+  guestCount Int // número de invitados esperados
+
+  // Horario
+  startDate DateTime // fecha y hora de inicio
+  endDate   DateTime // fecha y hora de fin
+
+  // Workflow
+  status       ReservationRequestStatus @default(PENDIENTE)
+  adminComment String? // respuesta/observación del admin
+  reviewedAt   DateTime? // fecha de aprobación/rechazo
+  reviewedBy   String? // userId del admin que revisó
+
+  // Relaciones
+  reservation    Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+  user           User        @relation(fields: [userId], references: [id])
+  estimatedPrice Float? // calculado al crear (hours × pricePerHour o price fijo)
+  invoiceId      String? // si se facturó la reserva
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([reservationId, status])
+  @@index([userId, status])
+  @@index([startDate, endDate])
+  @@map("reservation_requests")
+}
+
+// ============================================
+// SANCIONES
+// ============================================
+
+model Sanction {
+  id     Int    @id @default(autoincrement())
+  userId String // ← directo al User (era sanctionedLawyerId)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sanctionType       SanctionType
+  sanctionResolution String
+  amount             String?
+  description        String?
+  startDate          DateTime?
+  endDate            DateTime?
+  isActive           Boolean      @default(true) // sanción vigente o histórica
+  createdAt          DateTime     @default(now())
+
+  @@index([userId])
+  @@index([sanctionType, isActive])
+  @@map("sanctions")
+}
+
+// ============================================
+// FACTURACIÓN Y PAGOS (se mantiene estructura, se limpia)
+// ============================================
+
+model InvoiceHeader {
+  id          String        @id @default(uuid())
+  orderNumber String        @unique
+  issueDate   DateTime      @default(now())
+  status      InvoiceStatus @default(PENDIENTE)
+
+  // Client data
+  clientName     String?
+  documentType   DocumentType  @default(DNI)
+  documentNumber String?
+  billingAddress String?
+  saleCondition  SaleCondition @default(CONTADO)
+  currency       Currency      @default(PEN)
+  exchangeRate   Float? // tipo de cambio SBS (obligatorio si currency = USD)
+  observations   String?
+
+  // SUNAT - Comprobante electronico
+  sunatStatus       SunatStatus     @default(NOT_APPLICABLE)
+  sunatDocType      SunatDocType?
+  series            String? // snapshot: "F001"
+  sequential        String? // snapshot: "000001"
+  sunatEmissionDate DateTime? // fecha de emision SUNAT (puede diferir de issueDate)
+  seriesConfigId    Int?
+  seriesConfig      DocumentSeries? @relation(fields: [seriesConfigId], references: [id])
+
+  // SUNAT - NC/ND: referencia al comprobante original
+  referenceInvoiceId           String?
+  referenceInvoice             InvoiceHeader?  @relation("InvoiceReference", fields: [referenceInvoiceId], references: [id])
+  creditDebitNotes             InvoiceHeader[] @relation("InvoiceReference")
+  creditDebitReasonCode        String? // Catálogo 09 (NC) / 10 (ND): "01"=Anulación, "07"=Devolución
+  creditDebitReasonDescription String?
+
+  // SUNAT - Respuesta
+  sunatResponseCode String?
+  sunatDescription  String?
+  sunatAttempts     Int       @default(0)
+  sunatSentAt       DateTime?
+
+  // SUNAT - Totales tributarios
+  totalTaxable      Float? // base imponible gravada con IGV
+  totalExempt       Float? // base imponible exonerada
+  totalUnaffected   Float? // base imponible inafecta
+  totalFree         Float? // valor venta gratuito
+  totalIgv          Float?
+  totalIsc          Float?
+  totalOtherCharges Float?
+
+  // Void / anulación interna
+  voidedAt   DateTime?
+  voidedBy   String?
+  voidReason String?
+
+  // Relations
+  userId           String?
+  user             User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  details          InvoiceDetail[]
+  transaction      PaymentTransaction?
+  billingDocuments BillingDocument[]
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status, createdAt])
+  @@index([sunatStatus])
+  @@map("invoice_headers")
+}
+
+model InvoiceDetail {
+  id            Int           @id @default(autoincrement())
+  invoiceId     String
+  invoice       InvoiceHeader @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description   String
+  price         Float
+  unitOfMeasure String        @default("NIU")
+  discount      Float         @default(0)
+  quantity      Int           @default(1)
+
+  // Qué entidad paga esta línea (polimorfismo limpio)
+  itemType InvoiceItemType
+  itemId   String? // id de ActivityAttendee o QuotaPayment
+
+  // SUNAT - Desglose tributario por línea
+  taxAffectation      String? // Catálogo 07: "10"=gravado, "20"=exonerado, "30"=inafecto
+  igv                 Float?
+  unitPriceWithoutIgv Float?
+
+  @@index([invoiceId])
+  @@map("invoice_details")
+}
+
+model PaymentTransaction {
+  id        String        @id @default(uuid())
+  invoiceId String        @unique
+  invoice   InvoiceHeader @relation(fields: [invoiceId], references: [orderNumber], onDelete: Cascade)
+  status    PaymentStatus @default(PENDIENTE)
+
+  // Izipay
+  transactionId     String  @unique // id de transacción Izipay
+  authorizationCode String? // código de autorización del banco emisor
+  paymentMethod     String? // "CARD", "YAPE", "PLIN"
+  cardBrand         String? // "VISA", "MASTERCARD", "AMEX"
+  cardLast4         String? // últimos 4 dígitos (para mostrar al usuario)
+
+  amount      Float
+  currency    Currency  @default(PEN)
+  message     String?
+  rawData     Json? // respuesta cruda de Izipay (auditoría / debug)
+  processedAt DateTime? // cuando Izipay confirmó el pago
+
+  createdAt DateTime @default(now())
+
+  @@map("payment_transactions")
+}
+
+// Archivos de facturación almacenados en Cloudinary (PDF, XML firmado, CDR ZIP)
+model BillingDocument {
+  id        Int           @id @default(autoincrement())
+  invoiceId String
+  invoice   InvoiceHeader @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  type         BillingDocType // XML_SIGNED, CDR_ZIP, PDF
+  url          String // Cloudinary URL
+  publicId     String // Cloudinary publicId (para gestión y eliminación)
+  resourceType String         @default("raw") // tipo de recurso Cloudinary
+  format       String? // "pdf", "xml", "zip"
+  bytes        Int?
+  originalName String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([invoiceId, type])
+  @@map("billing_documents")
+}
+
+// ============================================
+// MEDIA (limpio, con tablas pivote explicitas)
+// ============================================
+
+model Media {
+  id           Int          @id @default(autoincrement())
+  url          String
+  title        String
+  publicId     String
+  resourceType String?
+  type         String?
+  bytes        Int
+  width        Int
+  height       Int
+  format       String?
+  alt          String?
+  caption      String?
+  context      MediaContext @default(GALLERY)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones via tablas pivote
+  activities         ActivityMedia[]
+  reservations       ReservationMedia[]
+  supportAttachments SupportAttachment[]
+
+  @@index([context])
+  @@map("media")
+}
+
+model ProfileImage {
+  id       Int    @id @default(autoincrement())
+  url      String
+  publicId String
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("profile_images")
+}
+
+// ============================================
+// NOTIFICACIONES Y AUTOMATIZACIÓN (NUEVO)
+// ============================================
+
+// Plantillas configurables desde el admin
+model NotificationTemplate {
+  id         Int     @id @default(autoincrement())
+  code       String  @unique // "QUOTA_REMINDER_5D", "SUPPORT_RESOLVED_MEMBER"
+  name       String // "Recordatorio de cuota - 5 dias antes"
+  subject    String // Asunto del email
+  body       String // HTML con {{variables}}: {{userName}}, {{amount}}, {{dueDate}}
+  shortBody  String? // Texto corto para IN_APP / PUSH (max ~120 chars)
+  channels   Json    @default("[\"EMAIL\"]") // ["EMAIL", "IN_APP"], ["EMAIL", "IN_APP", "PUSH"]
+  isCritical Boolean @default(false) // si true, ignora preferencias de usuario
+  isActive   Boolean @default(true)
+
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("notification_templates")
+}
+
+// Log de cada notificacion enviada
+model Notification {
+  id         Int                 @id @default(autoincrement())
+  userId     String
+  templateId Int?
+  subject    String
+  body       String
+  channel    NotificationChannel @default(EMAIL)
+  status     NotificationStatus  @default(PENDING)
+  sentAt     DateTime?
+  readAt     DateTime?
+  error      String?
+  metadata   Json? // datos adicionales del contexto
+
+  user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template NotificationTemplate? @relation(fields: [templateId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+// Preferencias de notificación por usuario (opt-out por trigger y canal)
+model NotificationPreference {
+  id         Int                 @id @default(autoincrement())
+  userId     String
+  triggerKey String // ej: "SUPPORT_RESOLVED", "EVENT_REMINDER", "QUOTA_DUE"
+  channel    NotificationChannel
+  enabled    Boolean             @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, triggerKey, channel])
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
+// Reglas de automatizacion configurables desde admin
+model AutomationRule {
+  id          Int               @id @default(autoincrement())
+  name        String // "Recordatorio cuota 5 dias antes"
+  description String?
+  trigger     AutomationTrigger
+  config      Json // { daysOffset: 5, templateCode: "QUOTA_REMINDER_5D", ... }
+  isActive    Boolean           @default(true)
+  lastRunAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("automation_rules")
+}
+
+// ============================================
+// AUDITORÍA / ANALYTICS (NUEVO - para dashboard)
+// ============================================
+
+model AuditLog {
+  id        Int     @id @default(autoincrement())
+  userId    String?
+  action    String // "CREATE", "UPDATE", "DELETE", "LOGIN", "PAYMENT", "EXPORT"
+  entity    String // "activity", "invoice", "user", "support", etc.
+  entityId  String?
+  details   Json? // { field: "status", from: "DRAFT", to: "ACTIVE" }
+  ipAddress String?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, action, createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// Certificados (nuevo modelo para gestionar constancias y certificaciones)
+// ============================================
+
+model Certificate {
+  id     String          @id @default(uuid())
+  userId String
+  type   CertificateType
+  code   String          @unique // "CONST-2026-001234" (auto-generado)
+
+  // Validez
+  issuedAt   DateTime  @default(now())
+  validUntil DateTime? // null = indefinido (ej: colegiatura)
+
+  // Contexto
+  activityId   Int? // si es constancia de asistencia
+  observations String?
+
+  // Estado
+  status       CertificateStatus @default(ISSUED)
+  revokedAt    DateTime?
+  revokedBy    String?
+  revokeReason String?
+
+  // PDF generado
+  fileUrl      String? // Cloudinary URL del PDF
+  filePublicId String?
+  user         User      @relation(fields: [userId], references: [id])
+  activity     Activity? @relation(fields: [activityId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, type])
+  @@index([code])
+  @@index([status, validUntil])
+  @@map("certificates")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum MediaContext {
+  GALLERY // galería general del admin: actividades, reservas, posts
+  PROFILE // fotos de perfil
+  SUPPORT // adjuntos de reclamos — no visibles en galería general
+  COVER // portadas de posts/agreements
+}
+
+enum Role {
+  SUPERADMIN // acceso total cross-organización
+  ADMIN // gestión completa del colegio
+  TREASURER // cuotas, facturación, descuentos, reportes financieros
+  EVENT_MANAGER // actividades, asistentes, certificados de asistencia
+  CONTENT_EDITOR // posts, convenios, encuestas
+  SUPPORT_AGENT // solo módulo de soporte (tickets asignados)
+  SECRETARY // alta/edición de miembros, sanciones, constancias
+  MODERATOR // soporte + contenido (rol combinado legado)
+  MEMBER // agremiado
+}
+
+enum CertificateType {
+  HABILITACION // constancia de estar al día
+  COLEGIATURA // certificado de ingreso al colegio
+  ASISTENCIA // constancia de asistencia a actividad
+  OTROS
+}
+
+enum CertificateStatus {
+  ISSUED
+  REVOKED
+  EXPIRED
+}
+
+enum AgreementCategory {
+  EDUCATION // universidades, cursos
+  HEALTH // clinicas, seguros
+  COMMERCIAL // descuentos comerciales
+  FINANCIAL // bancos, cooperativas
+  GOVERNMENT // convenios con entidades publicas
+  OTHER
+}
+
+enum SpaceType {
+  HALL // auditorio
+  CONFERENCE // sala de conferencias
+  CLASSROOM // aula
+  OFFICE // oficina
+  OUTDOOR // espacio al aire libre
+  MULTIPURPOSE // multiuso
+  OTHER
+}
+
+enum ReservationRequestStatus {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  CANCELADO
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED // por sancion
+  BLOCKED // por mora (si moraAutoBlock = true)
+}
+
+enum MemberCategory {
+  REGULAR
+  JUBILADO
+  VITALICIO
+  HONORARIO
+}
+
+enum ModuleType {
+  EVENTS
+  RESERVATIONS
+  SURVEYS
+  SUPPORT
+  AGREEMENTS
+  QUOTES
+  POSTS
+  USERS
+  ANALYTICS
+  SETTINGS
+}
+
+enum ActivityType {
+  SOCIAL
+  ACADEMIC
+}
+
+enum Status {
+  ACTIVE
+  DRAFT
+}
+
+enum PostType {
+  COMMUNICATIONS
+  NEWS
+}
+
+enum SurveyStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum QuestionType {
+  SINGLE_CHOICE // una sola opcion
+  MULTIPLE_CHOICE // varias opciones
+  TEXT // respuesta libre
+  SCALE // escala numerica (1-5, 1-10, etc.)
+}
+
+enum AttendanceStatus {
+  PENDIENTE
+  ACEPTADO
+  RECHAZADO
+  CANCELADO
+}
+
+enum SupportStatus {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REJECTED
+  REOPENED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum SanctionType {
+  AMONESTACION // advertencia formal
+  MULTA // sanción económica
+  SUSPENSION_TEMPORAL // suspensión por tiempo determinado
+  INHABILITACION // sin derechos mientras dure
+  EXPULSION
+}
+
+enum DiscountType {
+  GENERAL
+  INVITADO
+  CUOTA
+  EVENTO
+}
+
+enum Currency {
+  PEN
+  USD
+}
+
+enum SaleCondition {
+  CONTADO
+  CREDITO
+}
+
+enum InvoiceItemType {
+  QUOTA // itemId = QuotaPayment.id
+  ACTIVITY_ATTENDEE // itemId = ActivityAttendee.id (miembro, invitado o externo)
+  OTHER
+}
+
+enum PaymentStatus {
+  PAGADO
+  EXPIRADO
+  CANCELADO
+  FALLIDO
+  PENDIENTE
+}
+
+enum InvoiceStatus {
+  PENDIENTE
+  PAGADO
+  FACTURADO
+  EXPIRADO
+  CANCELADO
+  FALLIDO
+}
+
+enum DocumentType {
+  DNI
+  RUC
+  CE
+  PASAPORTE
+  OTROS
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+  PUSH // FCM/APNs para app móvil (futuro)
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum AutomationTrigger {
+  QUOTA_DUE_REMINDER // X dias antes del vencimiento
+  QUOTA_OVERDUE // X dias despues del vencimiento
+  EVENT_CREATED // cuando se publica un evento
+  EVENT_REMINDER // X dias antes del evento
+  POST_PUBLISHED // cuando se publica un comunicado
+  SURVEY_PUBLISHED // cuando se publica una encuesta
+  SUPPORT_CREATED // nuevo reclamo recibido (notifica admins)
+  SUPPORT_ASSIGNED // cuando se asigna un reclamo al agremiado
+  SUPPORT_RESOLVED // reclamo resuelto (notifica agremiado)
+  SUPPORT_REJECTED // reclamo rechazado (notifica agremiado)
+  SUPPORT_OVERDUE // reclamo no atendido a tiempo (notifica admins)
+  SUPPORT_REOPENED // agremiado reabrió un reclamo (notifica admins)
+  MONTHLY_REPORT // reporte mensual automatico
+}
+
+// ============================================
+// ENUMS - FACTURACIÓN ELECTRÓNICA SUNAT
+// ============================================
+
+enum SunatDocType {
+  FACTURA // 01 - Factura
+  BOLETA // 03 - Boleta de venta
+  NOTA_CREDITO // 07 - Nota de crédito
+  NOTA_DEBITO // 08 - Nota de débito
+}
+
+enum SunatStatus {
+  NOT_APPLICABLE // factura interna, no enviada a SUNAT
+  PENDING // en cola para procesar
+  PROCESSING // generando/firmando XML
+  SIGNED // XML firmado, listo para enviar
+  SENT // enviada a SUNAT, esperando respuesta
+  ACCEPTED // SUNAT aceptó (CDR recibido)
+  OBSERVED // SUNAT aceptó con observaciones (códigos 100-1999)
+  REJECTED // SUNAT rechazó
+  ERROR // error interno o de conexión (reintentable)
+  VOIDED // anulado (comunicación de baja)
+}
+
+enum BillingDocType {
+  XML_SIGNED // XML firmado listo para envío y archivado
+  CDR_ZIP // ZIP de CDR devuelto por SUNAT
+  PDF // PDF generado con pdfmake
+}
+
+enum ActivityAudience {
+  MEMBERS_ONLY // solo miembros registrados
+  MEMBERS_AND_GUESTS // miembros + invitados con sponsor
+  OPEN // todos: miembros, invitados y externos sin sponsor
+}
+
+enum AttendeeType {
+  MEMBER // User registrado (userId requerido)
+  INVITED // traído por un miembro (documentNumber + sponsorAttendeeId requeridos)
+  EXTERNAL // externo directo (documentNumber requerido, sin sponsor)
+}
+
+enum DiscountTargetType {
+  ALL // aplica a todos los miembros activos automáticamente
+  BY_CATEGORY // aplica a categorías en targetCategories[]
+  SPECIFIC_USERS // solo usuarios en tabla DiscountUser
+}

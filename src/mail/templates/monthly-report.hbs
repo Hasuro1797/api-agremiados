@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{subject}}</title>
+    <style>
+      body { font-family: Arial, sans-serif; color: #333; background: #f5f5f5; margin: 0; padding: 0; }
+      .container { max-width: 680px; margin: 32px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.1); }
+      .header { background: #1e3a5f; color: #fff; padding: 28px 32px; }
+      .header h1 { margin: 0; font-size: 22px; }
+      .header p { margin: 6px 0 0; font-size: 14px; opacity: .8; }
+      .body { padding: 28px 32px; }
+      .section { margin-bottom: 28px; }
+      .section h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .5px; color: #1e3a5f; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 16px; }
+      .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .metric-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 14px 18px; }
+      .metric-card .label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
+      .metric-card .value { font-size: 22px; font-weight: 700; color: #111827; }
+      .metric-card .note { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      th { background: #f3f4f6; text-align: left; padding: 8px 12px; font-weight: 600; color: #374151; }
+      td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; }
+      .footer { background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 16px 32px; font-size: 12px; color: #9ca3af; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Reporte Mensual</h1>
+        <p>{{monthName}} {{year}}</p>
+      </div>
+
+      <div class="body">
+
+        <!-- Recaudación -->
+        <div class="section">
+          <h2>Recaudación</h2>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="label">Total recaudado</div>
+              <div class="value">S/ {{totalRevenue}}</div>
+              <div class="note">Periodo actual</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Periodo anterior</div>
+              <div class="value">S/ {{revenuePrevPeriod}}</div>
+              <div class="note">Variación: {{revenueChangePercent}}%</div>
+            </div>
+          </div>
+          {{#if revenueByMonth}}
+          <table style="margin-top:16px;">
+            <thead>
+              <tr><th>Tramo</th><th>Monto (S/)</th></tr>
+            </thead>
+            <tbody>
+              {{#each revenueByMonth}}
+              <tr><td>{{this.label}}</td><td>{{this.amount}}</td></tr>
+              {{/each}}
+            </tbody>
+          </table>
+          {{/if}}
+        </div>
+
+        <!-- Cuotas -->
+        <div class="section">
+          <h2>Cuotas</h2>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="label">Tasa de mora</div>
+              <div class="value">{{defaultRate}}%</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Cuotas pendientes</div>
+              <div class="value">{{pendingQuotas}}</div>
+              <div class="note">de {{totalQuotas}} totales</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Miembros -->
+        <div class="section">
+          <h2>Estado de Miembros</h2>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="label">Activos</div>
+              <div class="value">{{activeMembers}}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Inactivos</div>
+              <div class="value">{{inactiveMembers}}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Suspendidos</div>
+              <div class="value">{{suspendedMembers}}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Total miembros</div>
+              <div class="value">{{totalMembers}}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Participación -->
+        <div class="section">
+          <h2>Participación en Actividades</h2>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="label">Total asistentes</div>
+              <div class="value">{{totalAttendees}}</div>
+              <div class="note">En el periodo</div>
+            </div>
+          </div>
+          {{#if attendanceByMonth}}
+          <table style="margin-top:16px;">
+            <thead>
+              <tr><th>Tramo</th><th>Asistentes</th></tr>
+            </thead>
+            <tbody>
+              {{#each attendanceByMonth}}
+              <tr><td>{{this.label}}</td><td>{{this.count}}</td></tr>
+              {{/each}}
+            </tbody>
+          </table>
+          {{/if}}
+        </div>
+
+        <!-- Soporte -->
+        <div class="section">
+          <h2>Reclamos y Soporte</h2>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="label">Pendientes</div>
+              <div class="value">{{pendingClaims}}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">En proceso</div>
+              <div class="value">{{inProgressClaims}}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Resueltos</div>
+              <div class="value">{{resolvedClaims}}</div>
+            </div>
+            <div class="metric-card">
+              <div class="label">Total reclamos</div>
+              <div class="value">{{totalClaims}}</div>
+              <div class="note">En el periodo</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="footer">
+        Este reporte fue generado automáticamente el día 1 de {{monthName}} {{year}}.
+        No responda a este correo.
+      </div>
+    </div>
+  </body>
+</html>

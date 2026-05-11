@@ -1,0 +1,7 @@
+onlyBuiltDependencies:
+  - '@apollo/protobufjs'
+  - '@nestjs/core'
+  - '@prisma/engines'
+  - bcrypt
+  - prisma
+  - unrs-resolver
