@@ -257,6 +257,36 @@ type AttendeesResponse {
   meta: Meta!
 }
 
+type QuotaPeriodEntity {
+  id: Int!
+  year: Int!
+  month: Int!
+  amount: Float!
+  dueDate: DateTime!
+}
+
+type QuotaPaymentEntity {
+  id: Int!
+  userId: String!
+  periodId: Int!
+  status: PaymentStatus!
+  paidAt: DateTime
+  invoiceId: String
+  period: QuotaPeriodEntity!
+
+  """true si el periodo ya venció (dueDate < hoy) y sigue impago"""
+  isOverdue: Boolean!
+}
+
+"""Estado del pago"""
+enum PaymentStatus {
+  PAGADO
+  EXPIRADO
+  CANCELADO
+  FALLIDO
+  PENDIENTE
+}
+
 type QuoteAmountEntity {
   id: Int!
   description: String!
@@ -420,6 +450,82 @@ enum AutomationTrigger {
   SUPPORT_OVERDUE
   SUPPORT_REOPENED
   MONTHLY_REPORT
+}
+
+type DocumentSeriesEntity {
+  id: Int!
+  billingConfigId: Int!
+  tipoDoc: SunatDocType!
+
+  """Serie del comprobante (ej: F001, B001)"""
+  serie: String!
+
+  """Próximo correlativo a usar"""
+  correlativo: Int!
+  description: String
+  isActive: Boolean!
+
+  """
+  true cuando se superó el correlativo máximo SUNAT (99,999,999). Debe crearse una serie nueva.
+  """
+  isExhausted: Boolean!
+
+  """
+  true cuando faltan menos de 1000 comprobantes para agotar la serie (warning para el admin).
+  """
+  isNearExhaustion: Boolean!
+
+  """Cantidad de comprobantes que aún pueden emitirse en esta serie."""
+  remainingCapacity: Int!
+}
+
+"""Tipo de comprobante electrónico SUNAT"""
+enum SunatDocType {
+  """01 - Factura"""
+  FACTURA
+
+  """03 - Boleta de venta"""
+  BOLETA
+
+  """07 - Nota de crédito"""
+  NOTA_CREDITO
+
+  """08 - Nota de débito"""
+  NOTA_DEBITO
+}
+
+type BillingConfigEntity {
+  id: Int!
+  organizationId: String!
+  ruc: String!
+  razonSocial: String!
+  comercialName: String
+
+  """Usuario SOL (sin contraseña)"""
+  solUser: String!
+  ubigeo: String
+  address: String
+  district: String
+  province: String
+  department: String
+
+  """Indica si hay un certificado PFX cargado"""
+  hasCertificate: Boolean!
+  production: Boolean!
+  isActive: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  series: [DocumentSeriesEntity!]!
+}
+
+type NextCorrelativoResult {
+  id: Int!
+  serie: String!
+  correlativo: Int!
+  isExhausted: Boolean!
+  isNearExhaustion: Boolean!
+  remainingCapacity: Int!
+  maxCorrelativo: Int!
 }
 
 type ReservationImage {
@@ -823,6 +929,208 @@ type MetricsDashboard {
   totalClaims: Int!
 }
 
+type InvoiceDetailEntity {
+  id: Int!
+  invoiceId: String!
+  description: String!
+  price: Float!
+  unitOfMeasure: String!
+  discount: Float!
+  quantity: Int!
+  itemType: InvoiceItemType!
+  itemId: String
+
+  """Catálogo 07 SUNAT: 10=gravado, 20=exonerado, 30=inafecto"""
+  taxAffectation: String
+  igv: Float
+  unitPriceWithoutIgv: Float
+}
+
+"""Entidad que origina la línea del comprobante"""
+enum InvoiceItemType {
+  QUOTA
+  ACTIVITY_ATTENDEE
+  OTHER
+}
+
+type PaymentTransactionEntity {
+  id: String!
+  invoiceId: String!
+  status: PaymentStatus!
+  transactionId: String!
+  authorizationCode: String
+  paymentMethod: String
+  cardBrand: String
+  cardLast4: String
+  amount: Float!
+  currency: Currency!
+  message: String
+  rawData: JSON
+  processedAt: DateTime
+  createdAt: DateTime!
+}
+
+type BillingDocumentEntity {
+  id: Int!
+  invoiceId: String!
+  type: BillingDocType!
+  url: String!
+  format: String
+  bytes: Int
+  originalName: String
+  createdAt: DateTime!
+}
+
+"""Tipo de archivo de facturación (XML firmado, CDR, PDF)"""
+enum BillingDocType {
+  XML_SIGNED
+  CDR_ZIP
+  PDF
+}
+
+type InvoiceHeaderEntity {
+  id: String!
+  orderNumber: String!
+  issueDate: DateTime!
+  status: InvoiceStatus!
+  clientName: String
+  documentType: DocumentType!
+  documentNumber: String
+  billingAddress: String
+  saleCondition: SaleCondition!
+  currency: Currency!
+  exchangeRate: Float
+  observations: String
+  sunatStatus: SunatStatus!
+  sunatDocType: SunatDocType
+  series: String
+  sequential: String
+  sunatEmissionDate: DateTime
+  referenceInvoiceId: String
+  creditDebitReasonCode: String
+  creditDebitReasonDescription: String
+  sunatResponseCode: String
+  sunatDescription: String
+  sunatAttempts: Int!
+  sunatSentAt: DateTime
+  totalTaxable: Float
+  totalExempt: Float
+  totalUnaffected: Float
+  totalFree: Float
+  totalIgv: Float
+  totalIsc: Float
+  totalOtherCharges: Float
+
+  """Importe total a pagar (suma de bases + IGV + otros cargos)"""
+  total: Float!
+  voidedAt: DateTime
+  voidedBy: String
+  voidReason: String
+  userId: String
+  details: [InvoiceDetailEntity!]!
+  transaction: PaymentTransactionEntity
+  billingDocuments: [BillingDocumentEntity!]
+  metadata: JSON
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+"""Estado interno del comprobante / orden de pago"""
+enum InvoiceStatus {
+  PENDIENTE
+  PAGADO
+  FACTURADO
+  EXPIRADO
+  CANCELADO
+  FALLIDO
+}
+
+"""Tipo de documento de identidad del cliente"""
+enum DocumentType {
+  DNI
+  RUC
+  CE
+  PASAPORTE
+  OTROS
+}
+
+"""Condición de venta: CONTADO o CREDITO"""
+enum SaleCondition {
+  CONTADO
+  CREDITO
+}
+
+"""Estado del envío del comprobante a SUNAT"""
+enum SunatStatus {
+  NOT_APPLICABLE
+  PENDING
+  PROCESSING
+  SIGNED
+  SENT
+  ACCEPTED
+  OBSERVED
+  REJECTED
+  ERROR
+  VOIDED
+}
+
+type PaginatedInvoices {
+  data: [InvoiceHeaderEntity!]!
+  meta: Meta!
+}
+
+type PaymentTokenEntity {
+  """Token de sesión para el formulario Izipay"""
+  token: String!
+
+  """transactionId a usar en el callback"""
+  transactionId: String!
+
+  """orderNumber del comprobante generado"""
+  orderNumber: String!
+
+  """ID del InvoiceHeader creado"""
+  invoiceId: String!
+
+  """Importe a cobrar (moneda mayor, ej. soles)"""
+  amount: Float!
+
+  """Importe en céntimos enviado a Izipay (string)"""
+  amountCents: String!
+
+  """Momento en que expira la reserva/token (15 minutos)"""
+  expiresAt: DateTime!
+
+  """true si se reutilizó una reserva PENDIENTE existente"""
+  reused: Boolean!
+
+  """Respuesta cruda de Izipay (por si el SDK frontend la necesita)"""
+  raw: JSON
+}
+
+type PaymentResultEntity {
+  """Estado final del comprobante"""
+  status: InvoiceStatus!
+  orderNumber: String!
+
+  """true si el pago fue aprobado"""
+  approved: Boolean!
+
+  """Mensaje legible para mostrar al usuario"""
+  message: String!
+}
+
+type EnrollmentResultEntity {
+  attendeeId: String!
+  activityId: Int!
+
+  """Estado de la inscripción (ACEPTADO)"""
+  status: String!
+
+  """Mensaje para mostrar al usuario"""
+  message: String!
+}
+
 type Query {
   """Verificar si ya hay administradores registrados"""
   haveAdminRegister: Boolean!
@@ -940,6 +1248,11 @@ type Query {
   getSponsoredByAttendeeId(attendeeId: String!): [AttendeeEntity!]!
 
   """
+  Lista las cuotas del usuario autenticado (con periodo e id) para mostrar/pagar. Filtrable por estado.
+  """
+  myQuotaPayments(status: PaymentStatus): [QuotaPaymentEntity!]!
+
+  """
   Obtener configuración pública de la organización (branding, colores, módulos activos)
   """
   getPublicOrganization: PublicOrganizationEntity
@@ -985,6 +1298,22 @@ type Query {
 
   """Obtener una regla de automatización por ID"""
   getAutomationRule(id: Int!): AutomationRuleEntity!
+
+  """
+  Obtener la configuración de facturación electrónica SUNAT (sin exponer credenciales sensibles)
+  """
+  getBillingConfig: BillingConfigEntity
+
+  """Listar series de comprobantes electrónicos configuradas"""
+  listDocumentSeries(tipoDoc: SunatDocType, isActive: Boolean): [DocumentSeriesEntity!]!
+
+  """Obtener una serie por id"""
+  getDocumentSeries(id: Int!): DocumentSeriesEntity!
+
+  """
+  Consultar el próximo correlativo disponible para un tipo de comprobante (sin reservarlo)
+  """
+  peekNextCorrelativo(tipoDoc: SunatDocType!): NextCorrelativoResult
   findAllReservations(
     """Número de página"""
     page: Int! = 1
@@ -1086,6 +1415,29 @@ type Query {
   adminUserNotifications(userId: String!, page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false): [NotificationEntity!]!
   getDashboardStats(memberFilters: FiltersMemberInput, surveyFilters: FiltersSurveyInput, reservationFilters: ReservationRequestFiltersInput): DashboardStats!
   getMetricsDashboard(filters: MetricsDashboardFiltersInput): MetricsDashboard!
+
+  """
+  Listar comprobantes con paginación y filtros (estado, SUNAT, fechas, búsqueda)
+  """
+  findInvoices(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+    status: InvoiceStatus
+    sunatStatus: SunatStatus
+    sunatDocType: SunatDocType
+    userId: String
+
+    """Busca por orderNumber, documentNumber o clientName"""
+    search: String
+    dateFrom: DateTime
+    dateTo: DateTime
+  ): PaginatedInvoices!
+
+  """Obtener un comprobante por id (con detalles y transacción)"""
+  findInvoice(id: String!): InvoiceHeaderEntity!
 }
 
 input FiltersActivityInput {
@@ -1321,6 +1673,32 @@ type Mutation {
 
   """Activar o desactivar una regla de automatización"""
   toggleAutomationRule(id: Int!): AutomationRuleEntity!
+
+  """Crear o actualizar la configuración de facturación SUNAT"""
+  upsertBillingConfig(input: UpsertBillingConfigInput!): BillingConfigEntity!
+
+  """
+  Cargar o reemplazar el certificado digital PFX para firma de comprobantes SUNAT. Se valida que el PFX sea legible con la contraseña dada.
+  """
+  uploadBillingCertificate(file: Upload!, password: String!): BillingConfigEntity!
+
+  """
+  Alternar entre entorno beta/homologación (false) y producción SUNAT (true). Requiere certificado activo y al menos una serie configurada para activar producción.
+  """
+  toggleBillingProduction(production: Boolean!): BillingConfigEntity!
+
+  """
+  Eliminar el certificado PFX almacenado. Solo posible cuando el modo producción está desactivado.
+  """
+  removeBillingCertificate: BillingConfigEntity!
+
+  """Crear una nueva serie de comprobantes"""
+  createDocumentSeries(input: CreateDocumentSeriesInput!): DocumentSeriesEntity!
+
+  """
+  Actualizar descripción o estado activo de una serie. No se puede modificar la serie ni el correlativo.
+  """
+  updateDocumentSeries(id: Int!, input: UpdateDocumentSeriesInput!): DocumentSeriesEntity!
   createReservation(createReservationInput: CreateReservationInput!): Reservation!
   updateReservation(updateReservationInput: UpdateReservationInput!): Reservation!
   removeReservations(ids: [Int!]!): Boolean!
@@ -1353,6 +1731,26 @@ type Mutation {
   markNotificationRead(id: Int!): Boolean!
   markAllNotificationsRead: Int!
   updateNotificationPreference(input: UpdateNotificationPreferenceInput!): NotificationPreferenceEntity!
+
+  """
+  Reintenta la emisión SUNAT de un comprobante PAGADO (estado ERROR/PENDING o reenvío manual).
+  """
+  retryInvoiceSunat(invoiceId: String!): Boolean!
+
+  """
+  Reserva el concepto (cuota o cupo de evento), crea el comprobante PENDIENTE y devuelve el token Izipay (expira en 15 min).
+  """
+  generatePaymentToken(input: GeneratePaymentTokenInput!): PaymentTokenEntity!
+
+  """
+  Callback del formulario Izipay. Valida la firma/transacción y aplica el resultado (idempotente).
+  """
+  confirmPayment(input: ConfirmPaymentInput!): PaymentResultEntity!
+
+  """
+  Inscribe al usuario autenticado en una actividad gratuita (sin pago Izipay). Reserva el cupo de forma atómica.
+  """
+  enrollFreeActivity(activityId: Int!): EnrollmentResultEntity!
 }
 
 input LoginInput {
@@ -1819,6 +2217,42 @@ input UpdateAutomationRuleInput {
   id: Int!
 }
 
+input UpsertBillingConfigInput {
+  """RUC del emisor (11 dígitos)"""
+  ruc: String!
+  razonSocial: String!
+  comercialName: String
+
+  """Usuario SOL (ej: MODDATOS)"""
+  solUser: String!
+
+  """Clave SOL"""
+  solPass: String!
+
+  """Código ubigeo INEI de 6 dígitos (ej: 040101)"""
+  ubigeo: String
+  address: String
+  district: String
+  province: String
+  department: String
+  isActive: Boolean
+}
+
+input CreateDocumentSeriesInput {
+  tipoDoc: SunatDocType!
+
+  """
+  Serie del comprobante. FACTURA: F001-F999. BOLETA: B001-B999. NOTA_CREDITO: FC01/BC01. NOTA_DEBITO: FD01/BD01
+  """
+  serie: String!
+  description: String
+}
+
+input UpdateDocumentSeriesInput {
+  description: String
+  isActive: Boolean
+}
+
 input CreateReservationInput {
   title: String!
   description: JSON
@@ -2068,4 +2502,58 @@ input UpdateNotificationPreferenceInput {
   triggerKey: String!
   channel: NotificationChannel!
   enabled: Boolean!
+}
+
+input GeneratePaymentTokenInput {
+  target: PaymentTargetType!
+
+  """Activity.id — requerido cuando target = ACTIVITY"""
+  targetId: Int
+
+  """
+  Lista de QuotaPayment.id — requerido cuando target = QUOTA (1 o varias)
+  """
+  quotaPaymentIds: [Int!]
+
+  """
+  Invitados que el miembro paga junto a su inscripción (solo ACTIVITY, audiencia que admita invitados)
+  """
+  guests: [ActivityGuestInput!]
+
+  """
+  Si se omite, se usa el documento del usuario (genera BOLETA). RUC genera FACTURA.
+  """
+  documentType: DocumentType
+  documentNumber: String
+  clientName: String
+  billingAddress: String
+}
+
+"""Tipo de concepto que se está pagando"""
+enum PaymentTargetType {
+  QUOTA
+  ACTIVITY
+}
+
+input ActivityGuestInput {
+  documentType: DocumentType!
+  documentNumber: String!
+  name: String!
+  lastname: String!
+  email: String
+  phone: String
+}
+
+input ConfirmPaymentInput {
+  """transactionId generado por el backend al solicitar el token"""
+  transactionId: String!
+
+  """Firma (hash) que devuelve Izipay para validar el payload"""
+  signature: String
+
+  """String firmado por Izipay (payloadHttp) para validar la firma"""
+  payloadHttp: String
+
+  """Respuesta cruda del formulario Izipay (para auditoría)"""
+  answer: JSON
 }

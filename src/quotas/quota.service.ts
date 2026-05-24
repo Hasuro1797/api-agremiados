@@ -239,6 +239,24 @@ export class QuotaService {
   /**
    * Obtiene el resumen de cuotas de un miembro
    */
+  /**
+   * Lista las cuotas (QuotaPayment) del usuario con su periodo. Útil para que
+   * el miembro vea qué adeuda y seleccione qué pagar (cada una tiene su id).
+   */
+  async getMyQuotaPayments(userId: string, status?: PaymentStatus) {
+    const now = new Date();
+    const payments = await this.prisma.quotaPayment.findMany({
+      where: { userId, ...(status && { status }) },
+      include: { period: true },
+      orderBy: [{ period: { year: 'asc' } }, { period: { month: 'asc' } }],
+    });
+    console.log('Pagos encontrados:', payments);
+    return payments.map((p) => ({
+      ...p,
+      isOverdue: p.status !== PaymentStatus.PAGADO && p.period.dueDate < now,
+    }));
+  }
+
   async getQuotaSummary(userId: string) {
     const payments = await this.prisma.quotaPayment.findMany({
       where: { userId },

@@ -71,6 +71,10 @@ export class EnvConfig {
   @IsString({ message: 'IZIPAY_URL es requerido' })
   @IsNotEmpty({ message: 'IZIPAY_URL no puede estar vacío' })
   IZIPAY_URL!: string;
+
+  @IsString({ message: 'SUNAT_WSDL es requerido' })
+  @IsNotEmpty({ message: 'SUNAT_WSDL no puede estar vacío' })
+  SUNAT_WSDL!: string;
 }
 
 export function validate(config: Record<string, unknown>): EnvConfig {

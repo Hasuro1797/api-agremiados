@@ -10,6 +10,10 @@ import { NotificationTemplateResolver } from './notification-template/notificati
 import { NotificationTemplateService } from './notification-template/notification-template.service';
 import { AutomationRuleResolver } from './automation-rule/automation-rule.resolver';
 import { AutomationRuleService } from './automation-rule/automation-rule.service';
+import { BillingConfigResolver } from './billing/billing-config/billing-config.resolver';
+import { BillingConfigService } from './billing/billing-config/billing-config.service';
+import { DocumentSeriesResolver } from './billing/document-series/document-series.resolver';
+import { DocumentSeriesService } from './billing/document-series/document-series.service';
 
 @Module({
   imports: [CloudinaryModule],
@@ -24,6 +28,11 @@ import { AutomationRuleService } from './automation-rule/automation-rule.service
     NotificationTemplateService,
     AutomationRuleResolver,
     AutomationRuleService,
+    BillingConfigResolver,
+    BillingConfigService,
+    DocumentSeriesResolver,
+    DocumentSeriesService,
   ],
+  exports: [DocumentSeriesService, BillingConfigService],
 })
 export class SettingsModule {}

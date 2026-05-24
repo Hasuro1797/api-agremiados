@@ -28,6 +28,9 @@ import { SurveyModule } from './survey/survey.module';
 import { SupportModule } from './support/support.module';
 import { NotificationModule } from './notification/notification.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SunatModule } from './sunat/sunat.module';
+import { IzipayModule } from './izipay/izipay.module';
+import { InvoiceModule } from './invoice/invoice.module';
 
 @Module({
   imports: [
@@ -77,6 +80,9 @@ import { DashboardModule } from './dashboard/dashboard.module';
     SupportModule,
     NotificationModule,
     DashboardModule,
+    SunatModule,
+    IzipayModule,
+    InvoiceModule,
   ],
   controllers: [],
   providers: [
