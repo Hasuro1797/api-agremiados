@@ -1751,6 +1751,21 @@ type Mutation {
   Inscribe al usuario autenticado en una actividad gratuita (sin pago Izipay). Reserva el cupo de forma atómica.
   """
   enrollFreeActivity(activityId: Int!): EnrollmentResultEntity!
+
+  """
+  [SOLO DESARROLLO] Fuerza el resultado de un pago sin pasar por Izipay (para pruebas). Bloqueado en producción.
+  """
+  devConfirmPayment(transactionId: String!, outcome: String = "PAID"): PaymentResultEntity!
+
+  """
+  Anulación interna de un comprobante NO aceptado por SUNAT. Revierte stock/cuota.
+  """
+  voidInvoice(input: VoidInvoiceInput!): InvoiceHeaderEntity!
+
+  """
+  Emite una Nota de Crédito (anulación/devolución) de un comprobante aceptado por SUNAT.
+  """
+  createCreditNote(input: CreateCreditNoteInput!): InvoiceHeaderEntity!
 }
 
 input LoginInput {
@@ -2556,4 +2571,24 @@ input ConfirmPaymentInput {
 
   """Respuesta cruda del formulario Izipay (para auditoría)"""
   answer: JSON
+}
+
+input VoidInvoiceInput {
+  invoiceId: String!
+
+  """Motivo de la anulación interna"""
+  reason: String!
+}
+
+input CreateCreditNoteInput {
+  """ID del comprobante original (aceptado)"""
+  invoiceId: String!
+
+  """
+  Catálogo 09 SUNAT: 01=Anulación de la operación, 06=Devolución total, 07=Devolución por ítem, etc.
+  """
+  reasonCode: String!
+
+  """Sustento / descripción del motivo"""
+  reasonDescription: String!
 }

@@ -44,4 +44,17 @@ export class PaymentResolver {
   ) {
     return this.paymentService.enrollFreeActivity(activityId, user);
   }
+
+  @Mutation(() => PaymentResultEntity, {
+    name: 'devConfirmPayment',
+    description:
+      '[SOLO DESARROLLO] Fuerza el resultado de un pago sin pasar por Izipay (para pruebas). Bloqueado en producción.',
+  })
+  devConfirmPayment(
+    @Args('transactionId') transactionId: string,
+    @Args('outcome', { nullable: true, defaultValue: 'PAID' })
+    outcome: 'PAID' | 'CANCELLED' | 'FAILED',
+  ) {
+    return this.paymentService.devForceResult(transactionId, outcome);
+  }
 }

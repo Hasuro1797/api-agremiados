@@ -31,6 +31,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { SunatModule } from './sunat/sunat.module';
 import { IzipayModule } from './izipay/izipay.module';
 import { InvoiceModule } from './invoice/invoice.module';
+import { PdfModule } from './pdf/pdf.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { InvoiceModule } from './invoice/invoice.module';
     SunatModule,
     IzipayModule,
     InvoiceModule,
+    PdfModule,
   ],
   controllers: [],
   providers: [

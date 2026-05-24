@@ -48,6 +48,7 @@ export class SignatureService {
     xmlString: string,
     pfxBuffer: Buffer,
     password: string,
+    rootElement: 'Invoice' | 'CreditNote' | 'DebitNote' = 'Invoice',
   ): { signedXml: string; hash: string } {
     // 1. Extraer clave privada y certificado del PFX
     const { privateKeyPem, certificatePem } = this.extractFromPfx(
@@ -71,7 +72,7 @@ export class SignatureService {
     //    Transform 2: exc-c14n garantiza canonicalización consistente de atributos
     //    (workaround para bug de xml-crypto con atributos no ordenados).
     signer.addReference({
-      xpath: "//*[local-name(.)='Invoice']",
+      xpath: `//*[local-name(.)='${rootElement}']`,
       transforms: [
         'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
         'http://www.w3.org/2001/10/xml-exc-c14n#',

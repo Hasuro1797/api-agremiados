@@ -712,6 +712,45 @@ export class PaymentService {
   }
 
   /**
+   * SOLO DESARROLLO: fuerza el resultado de un pago sin pasar por Izipay, para
+   * poder probar el pipeline SUNAT/NC desde el playground. Bloqueado en producción.
+   */
+  async devForceResult(
+    transactionId: string,
+    outcome: 'PAID' | 'CANCELLED' | 'FAILED',
+  ) {
+    const env = this.config.get('NODE_ENV', { infer: true });
+    if (env === 'production') {
+      throw new ForbiddenException('Operación no disponible en producción');
+    }
+    const payment = await this.prisma.paymentTransaction.findUnique({
+      where: { transactionId },
+      include: { invoice: true },
+    });
+    if (!payment) throw new NotFoundException('Transacción no encontrada');
+
+    const finalStates: InvoiceStatus[] = [
+      InvoiceStatus.PAGADO,
+      InvoiceStatus.FACTURADO,
+      InvoiceStatus.FALLIDO,
+      InvoiceStatus.CANCELADO,
+      InvoiceStatus.EXPIRADO,
+    ];
+    if (finalStates.includes(payment.invoice.status)) {
+      return this.buildResult(
+        payment.invoice.status,
+        payment.invoice.orderNumber,
+      );
+    }
+
+    const status = await this.applyOutcome(payment.id, outcome, {
+      dev: true,
+      code: outcome === 'PAID' ? '00' : 'DEV',
+    });
+    return this.buildResult(status, payment.invoice.orderNumber);
+  }
+
+  /**
    * Decide el resultado SIN depender del IPN. Estrategia (en orden):
    *  1) Cancelación explícita → CANCELLED.
    *  2) Aprobado + firma válida → PAID (caso normal en local y producción).
@@ -838,7 +877,6 @@ export class PaymentService {
       if (transitioned.count === 0) {
         return null; // ya finalizado por otra llamada → no reprocesar
       }
-
       await tx.paymentTransaction.update({
         where: { id: paymentId },
         data: {
@@ -1207,12 +1245,13 @@ export class PaymentService {
     if (!answer || typeof answer !== 'object') return {};
     const a = answer as Record<string, any>;
     const r = a.response ?? a;
+    const order = r.order?.[0] ?? r;
     return {
-      authorizationCode: r.authorizationCode ?? r.authCode ?? undefined,
-      paymentMethod: r.paymentMethod ?? r.method ?? undefined,
-      cardBrand: r.cardBrand ?? r.brand ?? undefined,
-      cardLast4: r.cardLast4 ?? r.last4 ?? r.pan ?? undefined,
-      message: r.message ?? a.message ?? undefined,
+      authorizationCode: order.codeAuth ?? undefined,
+      paymentMethod: r?.payMethod ?? undefined,
+      cardBrand: r?.card?.brand ?? undefined,
+      cardLast4: r?.card?.pan ?? undefined,
+      message: a.message ?? undefined,
     };
   }
 

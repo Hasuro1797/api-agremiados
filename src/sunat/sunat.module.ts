@@ -6,6 +6,7 @@ import { XmlBuilderService } from './xml-builder/xml-builder.service';
 import { SignatureService } from './signature/signature.service';
 import { SunatSenderService } from './sunat-sender/sunat-sender.service';
 import { SunatEmissionService } from './sunat-emission.service';
+import { InvoicePdfService } from './invoice-pdf.service';
 import { SunatResolver } from './sunat.resolver';
 import { RetrySunatTask } from './tasks/retry-sunat.task';
 
@@ -16,6 +17,7 @@ import { RetrySunatTask } from './tasks/retry-sunat.task';
     SignatureService,
     SunatSenderService,
     SunatEmissionService,
+    InvoicePdfService,
     SunatResolver,
     RetrySunatTask,
   ],

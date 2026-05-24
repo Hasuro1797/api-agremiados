@@ -16,7 +16,12 @@ import { DocumentSeriesService } from 'src/settings/billing/document-series/docu
 import { XmlBuilderService } from './xml-builder/xml-builder.service';
 import { SignatureService } from './signature/signature.service';
 import { SunatSenderService } from './sunat-sender/sunat-sender.service';
-import type { InvoiceDto, CompanyDto } from './xml-builder/xml-builder.service';
+import { InvoicePdfService } from './invoice-pdf.service';
+import type {
+  InvoiceDto,
+  CompanyDto,
+  CreditNoteDto,
+} from './xml-builder/xml-builder.service';
 
 // Máximo de reintentos automáticos ante errores transitorios.
 const MAX_SUNAT_ATTEMPTS = 5;
@@ -53,6 +58,7 @@ export class SunatEmissionService {
     private readonly sender: SunatSenderService,
     private readonly documentSeries: DocumentSeriesService,
     private readonly cloudinary: CloudinaryService,
+    private readonly invoicePdf: InvoicePdfService,
   ) {}
 
   /**
@@ -68,8 +74,11 @@ export class SunatEmissionService {
     if (!invoice)
       throw new NotFoundException(`Comprobante ${invoiceId} no existe`);
 
-    // Solo se emite lo pagado; estados SUNAT finales no se reprocesan.
-    if (invoice.status !== InvoiceStatus.PAGADO) {
+    const isNote = invoice.sunatDocType === SunatDocType.NOTA_CREDITO;
+
+    // Las facturas/boletas solo se emiten si están PAGADAS; las notas (NC) se
+    // crean listas para emitir, por lo que no exigen ese estado.
+    if (!isNote && invoice.status !== InvoiceStatus.PAGADO) {
       this.logger.warn(`Invoice ${invoiceId} no está PAGADO; se omite emisión`);
       return;
     }
@@ -98,12 +107,54 @@ export class SunatEmissionService {
       return;
     }
 
-    await this.prisma.invoiceHeader.update({
-      where: { id: invoiceId },
+    // Claim atómico: solo un proceso (fire-and-forget o cron) toma la emisión.
+    const claimed = await this.prisma.invoiceHeader.updateMany({
+      where: {
+        id: invoiceId,
+        sunatStatus: {
+          in: [
+            SunatStatus.NOT_APPLICABLE,
+            SunatStatus.PENDING,
+            SunatStatus.ERROR,
+          ],
+        },
+      },
       data: { sunatStatus: SunatStatus.PROCESSING },
     });
+    if (claimed.count === 0) {
+      this.logger.warn(`Emisión ${invoiceId} ya en curso/finalizada; se omite`);
+      return;
+    }
 
     try {
+      // Para NC: cargar el comprobante original y derivar el prefijo de serie
+      // (facturas → FC..., boletas → BC...).
+      let referenced: Awaited<
+        ReturnType<typeof this.prisma.invoiceHeader.findUnique>
+      > = null;
+      let seriePrefix: string | undefined;
+      if (isNote) {
+        if (!invoice.referenceInvoiceId) {
+          await this.markError(
+            invoiceId,
+            'Nota de crédito sin comprobante de referencia',
+          );
+          return;
+        }
+        referenced = await this.prisma.invoiceHeader.findUnique({
+          where: { id: invoice.referenceInvoiceId },
+        });
+        if (!referenced || !referenced.series || !referenced.sequential) {
+          await this.markError(
+            invoiceId,
+            'El comprobante referenciado no está emitido',
+          );
+          return;
+        }
+        seriePrefix =
+          referenced.sunatDocType === SunatDocType.FACTURA ? 'FC' : 'BC';
+      }
+
       // 1. Serie + correlativo (reusar si ya se asignó en un intento previo).
       const { serie, sequential, seriesConfigId } = await this.ensureSeries(
         invoice.id,
@@ -112,10 +163,10 @@ export class SunatEmissionService {
         invoice.series,
         invoice.sequential,
         invoice.seriesConfigId,
+        seriePrefix,
       );
 
-      // 2. Construir el DTO y el XML.
-      const invoiceDto = this.buildInvoiceDto(invoice, serie, sequential);
+      // 2. Construir el DTO y el XML (Invoice o CreditNote según el tipo).
       const company: CompanyDto = {
         ruc: config.ruc,
         razonSocial: config.razonSocial,
@@ -123,7 +174,23 @@ export class SunatEmissionService {
         ubigeo: config.ubigeo ?? undefined,
         address: config.address ?? undefined,
       };
-      const xml = this.xmlBuilder.buildInvoiceXml(invoiceDto, company);
+
+      let xml: string;
+      let signRoot: 'Invoice' | 'CreditNote';
+      if (isNote) {
+        const noteDto = this.buildCreditNoteDto(
+          invoice,
+          serie,
+          sequential,
+          referenced!,
+        );
+        xml = this.xmlBuilder.buildCreditNoteXml(noteDto, company);
+        signRoot = 'CreditNote';
+      } else {
+        const invoiceDto = this.buildInvoiceDto(invoice, serie, sequential);
+        xml = this.xmlBuilder.buildInvoiceXml(invoiceDto, company);
+        signRoot = 'Invoice';
+      }
 
       // 3. Firmar.
       const pfxBuffer = Buffer.from(config.certPfxBase64, 'base64');
@@ -131,6 +198,7 @@ export class SunatEmissionService {
         xml,
         pfxBuffer,
         config.certPassword,
+        signRoot,
       );
 
       // 4. Empaquetar ZIP: <RUC>-<tipo>-<serie>-<correlativo>.xml
@@ -156,6 +224,7 @@ export class SunatEmissionService {
         Buffer.from(signedXml, 'utf8'),
         `${baseName}.xml`,
         'xml',
+        baseName,
       );
 
       if (!result.success) {
@@ -176,9 +245,14 @@ export class SunatEmissionService {
         result.cdrZip!,
         `R-${baseName}.zip`,
         'zip',
+        baseName,
       );
 
       const sunatStatus = this.mapCdrToStatus(cdr.responseCode);
+      const accepted =
+        sunatStatus === SunatStatus.ACCEPTED ||
+        sunatStatus === SunatStatus.OBSERVED;
+
       await this.prisma.invoiceHeader.update({
         where: { id: invoice.id },
         data: {
@@ -188,12 +262,40 @@ export class SunatEmissionService {
           sunatSentAt: new Date(),
           sunatEmissionDate: invoice.sunatEmissionDate ?? new Date(),
           sunatAttempts: { increment: 1 },
-          ...(sunatStatus === SunatStatus.ACCEPTED ||
-          sunatStatus === SunatStatus.OBSERVED
-            ? { status: InvoiceStatus.FACTURADO }
-            : {}),
+          ...(accepted ? { status: InvoiceStatus.FACTURADO } : {}),
         },
       });
+
+      // 8. Generar y archivar el PDF (representación impresa) si fue aceptado.
+      if (accepted) {
+        try {
+          const pdfBuffer = await this.invoicePdf.generate(
+            {
+              ...invoice,
+              sunatEmissionDate: invoice.sunatEmissionDate ?? new Date(),
+            },
+            {
+              ruc: config.ruc,
+              razonSocial: config.razonSocial,
+              comercialName: config.comercialName,
+              address: config.address,
+            },
+            serie,
+            sequential,
+          );
+          await this.storeDocument(
+            invoice.id,
+            BillingDocType.PDF,
+            pdfBuffer,
+            `${baseName}.pdf`,
+            'pdf',
+            baseName,
+          );
+        } catch (pdfErr) {
+          // El PDF es complementario: si falla no invalida la aceptación SUNAT.
+          this.logger.error(`No se pudo generar el PDF de ${baseName}`, pdfErr);
+        }
+      }
 
       this.logger.log(
         `SUNAT ${sunatStatus} para ${baseName} (code ${cdr.responseCode})`,
@@ -215,6 +317,7 @@ export class SunatEmissionService {
     existingSerie: string | null,
     existingSeq: string | null,
     existingConfigId: number | null,
+    seriePrefix?: string,
   ): Promise<{ serie: string; sequential: string; seriesConfigId: number }> {
     if (existingSerie && existingSeq && existingConfigId) {
       return {
@@ -225,11 +328,18 @@ export class SunatEmissionService {
     }
 
     const seriesRow = await this.prisma.documentSeries.findFirst({
-      where: { billingConfigId, tipoDoc, isActive: true },
+      where: {
+        billingConfigId,
+        tipoDoc,
+        isActive: true,
+        ...(seriePrefix && { serie: { startsWith: seriePrefix } }),
+      },
       orderBy: { serie: 'asc' },
     });
     if (!seriesRow) {
-      throw new Error(`No hay serie activa para ${tipoDoc}`);
+      throw new Error(
+        `No hay serie activa para ${tipoDoc}${seriePrefix ? ` (prefijo ${seriePrefix})` : ''}`,
+      );
     }
 
     const reserved = await this.prisma.$transaction((tx) =>
@@ -276,18 +386,48 @@ export class SunatEmissionService {
     };
   }
 
-  /** Sube un archivo de facturación a Cloudinary y registra el BillingDocument. */
+  private buildCreditNoteDto(
+    note: Prisma.InvoiceHeaderGetPayload<{ include: { details: true } }>,
+    serie: string,
+    sequential: string,
+    referenced: {
+      sunatDocType: SunatDocType | null;
+      series: string | null;
+      sequential: string | null;
+    },
+  ): CreditNoteDto {
+    const base = this.buildInvoiceDto(note, serie, sequential);
+    return {
+      ...base,
+      motivoCode: note.creditDebitReasonCode ?? '01',
+      motivoDescription:
+        note.creditDebitReasonDescription ?? 'Anulación de la operación',
+      docReferencia: {
+        tipoDoc: DOC_TYPE_CODE[referenced.sunatDocType ?? SunatDocType.FACTURA],
+        serie: referenced.series ?? '',
+        correlativo: referenced.sequential ?? '',
+      },
+    };
+  }
+
+  /**
+   * Sube un archivo de facturación a Cloudinary y registra el BillingDocument.
+   * Cada comprobante va en su propia carpeta (billing/<baseName>) y el public_id
+   * conserva la extensión para preservar el formato en la URL y evitar colisiones
+   * (XML vs PDF tenían el mismo nombre al quitarles la extensión).
+   */
   private async storeDocument(
     invoiceId: string,
     type: BillingDocType,
     buffer: Buffer,
     fileName: string,
     format: string,
+    folderName: string,
   ) {
     const uploaded = await this.cloudinary.upload(Readable.from(buffer), {
       resource_type: 'raw',
-      folder: 'billing',
-      public_id: fileName.replace(/\.[^.]+$/, ''),
+      folder: `billing/${folderName}`,
+      public_id: fileName, // incluye la extensión (.xml/.zip/.pdf) → URL con formato
       overwrite: true,
     });
 
@@ -306,6 +446,8 @@ export class SunatEmissionService {
       update: {
         url: uploaded.secure_url,
         publicId: uploaded.public_id,
+        resourceType: 'raw',
+        format,
         bytes: uploaded.bytes,
         originalName: fileName,
       },
