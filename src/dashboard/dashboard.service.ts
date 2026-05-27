@@ -61,6 +61,7 @@ export class DashboardService {
       activeSurveys,
       todayReservations,
       yesterdayReservations,
+      monthlyRevenueAgg,
     ] = await Promise.all([
       this.prisma.user.count({ where: memberWhere }),
       this.prisma.user.count({
@@ -82,6 +83,13 @@ export class DashboardService {
           startDate: { gte: startOfYesterday, lt: startOfToday },
         },
       }),
+      this.prisma.paymentTransaction.aggregate({
+        where: {
+          status: PaymentStatus.PAGADO,
+          createdAt: { gte: startOfCurrentMonth },
+        },
+        _sum: { amount: true },
+      }),
     ]);
 
     const activeMembersPercentage =
@@ -100,12 +108,15 @@ export class DashboardService {
           ) / 10
         : 0;
 
+    const monthlyRevenue = monthlyRevenueAgg._sum.amount ?? 0;
+
     return {
       activeMembers,
       activeMembersPercentage,
       activeSurveys,
       allReservations: todayReservations,
       allReservationsPercentage,
+      monthlyRevenue,
     };
   }
 

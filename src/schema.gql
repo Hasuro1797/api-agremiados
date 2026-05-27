@@ -858,6 +858,9 @@ type DashboardStats {
 
   """% de cambio vs ayer"""
   allReservationsPercentage: Float!
+
+  """Ingresos del mes actual"""
+  monthlyRevenue: Float!
 }
 
 type RevenueByMonthEntry {
@@ -953,6 +956,37 @@ enum InvoiceItemType {
   OTHER
 }
 
+type PaymentCancellationEntity {
+  id: String!
+  paymentTransactionId: String!
+  type: CancellationType!
+  status: CancellationStatus!
+  amount: Float!
+  currency: Currency!
+  izipayOperationId: String
+  responseCode: String
+  message: String
+  rawResponse: JSON
+  reason: String
+
+  """Id de la Nota de Crédito que originó la devolución, si aplica"""
+  creditNoteId: String
+  performedBy: String
+  createdAt: DateTime!
+}
+
+"""Tipo de cancelación Izipay: ANULACION (mismo día) o DEVOLUCION"""
+enum CancellationType {
+  ANULACION
+  DEVOLUCION
+}
+
+"""Resultado de la cancelación Izipay (APPLIED o FAILED)"""
+enum CancellationStatus {
+  APPLIED
+  FAILED
+}
+
 type PaymentTransactionEntity {
   id: String!
   invoiceId: String!
@@ -967,6 +1001,7 @@ type PaymentTransactionEntity {
   message: String
   rawData: JSON
   processedAt: DateTime
+  cancellations: [PaymentCancellationEntity!]
   createdAt: DateTime!
 }
 
@@ -1129,6 +1164,66 @@ type EnrollmentResultEntity {
 
   """Mensaje para mostrar al usuario"""
   message: String!
+}
+
+type PreviewLineEntity {
+  """
+  Etiqueta legible. Ej: "Cuota 4/2025", "Inscripción: Curso X", "Invitados".
+  """
+  label: String!
+  quantity: Int!
+
+  """Precio unitario (sin descuento)"""
+  unitAmount: Float!
+
+  """Importe de la línea = quantity × unitAmount (sin descuento)"""
+  amount: Float!
+}
+
+type PreviewDiscountEntity {
+  """Monto total descontado"""
+  amount: Float!
+
+  """Porcentaje aplicado (0–100)"""
+  percentage: Float!
+
+  """
+  Nombre legible del descuento aplicado (descripción del Discount o un fallback).
+  """
+  name: String!
+}
+
+type PreviewIgvEntity {
+  """Monto del IGV incluido en el total"""
+  amount: Float!
+
+  """Tasa aplicada (ej. 0.18)"""
+  rate: Float!
+}
+
+type PaymentPreviewEntity {
+  """Suma de líneas a precio de catálogo, antes de descuentos."""
+  subtotal: Float!
+
+  """Descuento ganador. null si no aplica ningún descuento vigente."""
+  discount: PreviewDiscountEntity
+
+  """Desglose del IGV incluido en el total. null para cuotas (exoneradas)."""
+  igv: PreviewIgvEntity
+
+  """
+  Importe que se cobrará efectivamente (mismo valor que generatePaymentToken.amount).
+  """
+  total: Float!
+
+  """Moneda del cobro"""
+  currency: Currency!
+
+  """Desglose por ítem para mostrar al usuario"""
+  lines: [PreviewLineEntity!]!
+
+  """Avisos no bloqueantes (ej. cuotas ya pagadas que fueron filtradas)."""
+  warnings: [String!]!
 }
 
 type Query {
@@ -1417,6 +1512,11 @@ type Query {
   getMetricsDashboard(filters: MetricsDashboardFiltersInput): MetricsDashboard!
 
   """
+  Calcula el desglose del pago (subtotal, descuento, IGV, total) sin crear reserva, marcar cuotas, generar comprobante ni llamar a Izipay. Idempotente; pensada para refrescar el total mientras el usuario edita la selección.
+  """
+  previewPayment(input: PreviewPaymentInput!): PaymentPreviewEntity!
+
+  """
   Listar comprobantes con paginación y filtros (estado, SUNAT, fechas, búsqueda)
   """
   findInvoices(
@@ -1438,6 +1538,11 @@ type Query {
 
   """Obtener un comprobante por id (con detalles y transacción)"""
   findInvoice(id: String!): InvoiceHeaderEntity!
+
+  """
+  Cancelaciones/devoluciones Izipay que quedaron FAILED y requieren gestión manual de finanzas.
+  """
+  pendingRefunds: [PaymentCancellationEntity!]!
 }
 
 input FiltersActivityInput {
@@ -1524,6 +1629,38 @@ enum PeriodType {
   MONTH
   QUARTER
   YEAR
+}
+
+input PreviewPaymentInput {
+  target: PaymentTargetType!
+
+  """Activity.id — requerido cuando target = ACTIVITY"""
+  targetId: Int
+
+  """
+  Lista de QuotaPayment.id — requerido cuando target = QUOTA (1 o varias)
+  """
+  quotaPaymentIds: [Int!]
+
+  """
+  Invitados para previsualizar (solo ACTIVITY). Solo se usa la cantidad y precio configurado; no se validan documentos.
+  """
+  guests: [ActivityGuestInput!]
+}
+
+"""Tipo de concepto que se está pagando"""
+enum PaymentTargetType {
+  QUOTA
+  ACTIVITY
+}
+
+input ActivityGuestInput {
+  documentType: DocumentType!
+  documentNumber: String!
+  name: String!
+  lastname: String!
+  email: String
+  phone: String
 }
 
 type Mutation {
@@ -2542,21 +2679,6 @@ input GeneratePaymentTokenInput {
   documentNumber: String
   clientName: String
   billingAddress: String
-}
-
-"""Tipo de concepto que se está pagando"""
-enum PaymentTargetType {
-  QUOTA
-  ACTIVITY
-}
-
-input ActivityGuestInput {
-  documentType: DocumentType!
-  documentNumber: String!
-  name: String!
-  lastname: String!
-  email: String
-  phone: String
 }
 
 input ConfirmPaymentInput {

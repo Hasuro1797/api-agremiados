@@ -1,16 +1,24 @@
 import { Injectable } from '@nestjs/common';
+import { join } from 'path';
 import PdfPrinter from 'pdfmake/src/printer';
 
 /** Definición de documento pdfmake (tipado laxo: el SDK no trae tipos server-side). */
 export type PdfDocDefinition = Record<string, unknown>;
 
-// Fuentes estándar de PDF (AFM, integradas en PDFKit) — no requieren archivos TTF.
-const STANDARD_FONTS = {
-  Helvetica: {
-    normal: 'Helvetica',
-    bold: 'Helvetica-Bold',
-    italics: 'Helvetica-Oblique',
-    bolditalics: 'Helvetica-BoldOblique',
+const FONTS_DIR = join(process.cwd(), 'fonts', 'inter');
+
+const APP_FONTS = {
+  Inter: {
+    normal: join(FONTS_DIR, 'Inter-Regular.ttf'),
+    bold: join(FONTS_DIR, 'Inter-Bold.ttf'),
+    italics: join(FONTS_DIR, 'Inter-Italic.ttf'),
+    bolditalics: join(FONTS_DIR, 'Inter-BoldItalic.ttf'),
+  },
+  InterSemiBold: {
+    normal: join(FONTS_DIR, 'Inter_18pt-SemiBold.ttf'),
+    bold: join(FONTS_DIR, 'Inter-Bold.ttf'),
+    italics: join(FONTS_DIR, 'Inter_18pt-SemiBoldItalic.ttf'),
+    bolditalics: join(FONTS_DIR, 'Inter-BoldItalic.ttf'),
   },
 };
 
@@ -21,11 +29,11 @@ const STANDARD_FONTS = {
  */
 @Injectable()
 export class PdfService {
-  private readonly printer = new PdfPrinter(STANDARD_FONTS);
+  private readonly printer = new PdfPrinter(APP_FONTS);
 
   async generate(docDefinition: PdfDocDefinition): Promise<Buffer> {
     const definition: PdfDocDefinition = {
-      defaultStyle: { font: 'Helvetica', fontSize: 9 },
+      defaultStyle: { font: 'Inter', fontSize: 9 },
       pageSize: 'A4',
       pageMargins: [40, 40, 40, 50],
       ...docDefinition,

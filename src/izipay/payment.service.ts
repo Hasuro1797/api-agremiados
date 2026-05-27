@@ -12,6 +12,7 @@ import {
   AttendanceStatus,
   AttendeeType,
   Currency,
+  DiscountTargetType,
   DiscountType,
   DocumentType,
   InvoiceItemType,
@@ -30,6 +31,8 @@ import { SunatEmissionService } from 'src/sunat/sunat-emission.service';
 import { ConfirmPaymentInput } from './dto/confirm-payment.input';
 import { GeneratePaymentTokenInput } from './dto/generate-payment-token.input';
 import { PaymentTargetType } from './dto/payment-target.enum';
+import { PreviewPaymentInput } from './dto/preview-payment.input';
+import { PaymentPreviewEntity } from './entities/payment-preview.entity';
 import { IzipayService } from './izipay.service';
 import { checkSignature } from './utils/signature.util';
 
@@ -86,6 +89,195 @@ export class PaymentService {
     return this.generateForActivity(input, currentUser);
   }
 
+  // ============================================================
+  // PREVIEW DE PAGO (sin efectos secundarios)
+  // ============================================================
+
+  /**
+   * Calcula el desglose del pago (subtotal, descuento, IGV, total) usando la
+   * misma lógica de descuentos que generatePaymentToken, pero SIN crear
+   * reservas, marcar cuotas, generar comprobantes ni llamar a Izipay.
+   *
+   * Idempotente y barata: solo lecturas. Pensada para mostrarle al usuario
+   * cuánto se cobrará mientras edita la selección.
+   */
+  async previewPayment(
+    input: PreviewPaymentInput,
+    currentUser: { sub: string; role: Role },
+  ): Promise<PaymentPreviewEntity> {
+    if (input.target === PaymentTargetType.QUOTA) {
+      return this.previewQuota(input, currentUser);
+    }
+    return this.previewActivity(input, currentUser);
+  }
+
+  private async previewQuota(
+    input: PreviewPaymentInput,
+    currentUser: { sub: string; role: Role },
+  ): Promise<PaymentPreviewEntity> {
+    if (!input.quotaPaymentIds?.length) {
+      throw new BadRequestException(
+        'quotaPaymentIds es requerido para previsualizar cuotas',
+      );
+    }
+    const ids = [...new Set(input.quotaPaymentIds)];
+
+    const quotas = await this.prisma.quotaPayment.findMany({
+      where: { id: { in: ids } },
+      include: { period: true },
+    });
+    if (quotas.length !== ids.length) {
+      throw new BadRequestException('Alguna cuota no fue encontrada');
+    }
+
+    const ownerId = quotas[0].userId;
+    if (!quotas.every((q) => q.userId === ownerId)) {
+      throw new BadRequestException(
+        'Todas las cuotas deben pertenecer al mismo usuario',
+      );
+    }
+    const isOwner = ownerId === currentUser.sub;
+    const isStaff = currentUser.role !== Role.MEMBER;
+    if (!isOwner && !isStaff) {
+      throw new BadRequestException(
+        'No puedes previsualizar cuotas de otro usuario',
+      );
+    }
+
+    const warnings: string[] = [];
+    const valid = quotas.filter((q) => {
+      if (q.status === PaymentStatus.PAGADO) {
+        warnings.push(
+          `La cuota ${q.period.month}/${q.period.year} ya está pagada y fue omitida del cálculo`,
+        );
+        return false;
+      }
+      return true;
+    });
+
+    if (valid.length === 0) {
+      return {
+        subtotal: 0,
+        discount: null,
+        igv: null,
+        total: 0,
+        currency: Currency.PEN,
+        lines: [],
+        warnings,
+      };
+    }
+
+    const { percentage, name } = await this.resolveQuotaDiscount(
+      ownerId,
+      valid.length,
+    );
+
+    const lines = valid.map((q) => ({
+      label: `Cuota ${q.period.month}/${q.period.year}`,
+      quantity: 1,
+      unitAmount: round2(q.period.amount),
+      amount: round2(q.period.amount),
+    }));
+    const subtotal = round2(lines.reduce((s, l) => s + l.amount, 0));
+    const discountAmount = round2((subtotal * percentage) / 100);
+    const total = round2(subtotal - discountAmount);
+
+    return {
+      subtotal,
+      discount:
+        percentage > 0
+          ? { amount: discountAmount, percentage, name: name ?? 'Descuento' }
+          : null,
+      // Cuotas exoneradas (cat. 07 SUNAT '20') — no llevan IGV.
+      igv: null,
+      total,
+      currency: Currency.PEN,
+      lines,
+      warnings,
+    };
+  }
+
+  private async previewActivity(
+    input: PreviewPaymentInput,
+    currentUser: { sub: string; role: Role },
+  ): Promise<PaymentPreviewEntity> {
+    if (!input.targetId) {
+      throw new BadRequestException(
+        'targetId es requerido para previsualizar una actividad',
+      );
+    }
+    const activity = await this.prisma.activity.findUnique({
+      where: { id: input.targetId },
+    });
+    if (!activity) throw new NotFoundException('Actividad no encontrada');
+    if (!activity.hasPrice || !activity.price || activity.price <= 0) {
+      throw new BadRequestException('Esta actividad no tiene costo de pago');
+    }
+
+    const warnings: string[] = [];
+    const requestedGuests = input.guests?.length ?? 0;
+    let effectiveGuests = requestedGuests;
+
+    if (effectiveGuests > 0) {
+      if (activity.audience === ActivityAudience.MEMBERS_ONLY) {
+        warnings.push(
+          'Esta actividad no admite invitados; los invitados fueron omitidos del preview',
+        );
+        effectiveGuests = 0;
+      } else if (!activity.priceInvitee || activity.priceInvitee <= 0) {
+        warnings.push(
+          'La actividad no tiene precio configurado para invitados; los invitados fueron omitidos del preview',
+        );
+        effectiveGuests = 0;
+      }
+    }
+
+    const { percentage, name } = await this.resolveDiscount(
+      currentUser.sub,
+      DiscountType.EVENTO,
+      activity.id,
+    );
+
+    const lines = [
+      {
+        label: `Inscripción: ${activity.title}`,
+        quantity: 1,
+        unitAmount: round2(activity.price),
+        amount: round2(activity.price),
+      },
+    ];
+    if (effectiveGuests > 0 && activity.priceInvitee) {
+      const unit = round2(activity.priceInvitee);
+      lines.push({
+        label: 'Invitados',
+        quantity: effectiveGuests,
+        unitAmount: unit,
+        amount: round2(unit * effectiveGuests),
+      });
+    }
+
+    const subtotal = round2(lines.reduce((s, l) => s + l.amount, 0));
+    const discountAmount = round2((subtotal * percentage) / 100);
+    const total = round2(subtotal - discountAmount);
+    // Actividad = gravada ('10'): los precios incluyen IGV. Desglosamos la
+    // base (valor de venta) y el IGV embebido en el total para mostrarlos.
+    const base = round2(total / (1 + IGV_RATE));
+    const igvAmount = round2(total - base);
+
+    return {
+      subtotal,
+      discount:
+        percentage > 0
+          ? { amount: discountAmount, percentage, name: name ?? 'Descuento' }
+          : null,
+      igv: { amount: igvAmount, rate: IGV_RATE },
+      total,
+      currency: Currency.PEN,
+      lines,
+      warnings,
+    };
+  }
+
   // ---------- QUOTA ----------
 
   private async generateForQuota(
@@ -128,7 +320,10 @@ export class PaymentService {
     const reusable = await this.findReusableQuotaInvoice(ids);
     if (reusable) return this.regenerateToken(reusable);
 
-    const discountPct = await this.resolveQuotaDiscount(ownerId, quotas.length);
+    const { percentage: discountPct } = await this.resolveQuotaDiscount(
+      ownerId,
+      quotas.length,
+    );
     const billing = this.resolveBilling(input, quotas[0].user);
 
     const lines: CreateInvoiceLine[] = quotas.map((q) => {
@@ -217,7 +412,7 @@ export class PaymentService {
       if (reusable) return this.regenerateToken(reusable);
     }
 
-    const discountPct = await this.resolveDiscount(
+    const { percentage: discountPct } = await this.resolveDiscount(
       currentUser.sub,
       DiscountType.EVENTO,
       activity.id,
@@ -518,6 +713,8 @@ export class PaymentService {
         amount: chargeAmount,
         currency: Currency.PEN,
         status: PaymentStatus.PENDIENTE,
+        paymentToken: token,
+        paymentTokenAt: new Date(),
       },
     });
 
@@ -552,7 +749,12 @@ export class PaymentService {
     id: string;
     orderNumber: string;
     userId: string | null;
-    transaction: { id: string } | null;
+    transaction: {
+      id: string;
+      transactionId: string;
+      paymentToken: string | null;
+      paymentTokenAt: Date | null;
+    } | null;
     totalTaxable: number | null;
     totalExempt: number | null;
     totalUnaffected: number | null;
@@ -562,8 +764,31 @@ export class PaymentService {
   }) {
     const chargeAmount = this.invoiceTotal(invoice);
     const amountCents = String(Math.round(chargeAmount * 100));
-    const transactionId = this.generateTransactionId();
 
+    // Atajo: si ya hay un token Izipay vigente para este orderNumber, lo
+    // devolvemos en vez de pedir uno nuevo (Izipay rechaza con 400 si se pide
+    // un segundo token para el mismo orderNumber dentro de los 15 min).
+    const existing = invoice.transaction;
+    if (
+      existing?.paymentToken &&
+      existing.paymentTokenAt &&
+      existing.paymentTokenAt.getTime() + TOKEN_TTL_MS > Date.now()
+    ) {
+      return {
+        token: existing.paymentToken,
+        transactionId: existing.transactionId,
+        orderNumber: invoice.orderNumber,
+        invoiceId: invoice.id,
+        amount: chargeAmount,
+        amountCents,
+        expiresAt: new Date(existing.paymentTokenAt.getTime() + TOKEN_TTL_MS),
+        reused: true,
+        raw: null,
+      };
+    }
+
+    // Token vencido o inexistente: pedir uno nuevo a Izipay.
+    const transactionId = this.generateTransactionId();
     const izipayResponse = await this.izipay.generateToken({
       requestSource: RequestSource.ECOMMERCE,
       transactionId,
@@ -584,7 +809,12 @@ export class PaymentService {
       if (invoice.transaction) {
         await tx.paymentTransaction.update({
           where: { id: invoice.transaction.id },
-          data: { transactionId, status: PaymentStatus.PENDIENTE },
+          data: {
+            transactionId,
+            status: PaymentStatus.PENDIENTE,
+            paymentToken: token,
+            paymentTokenAt: new Date(),
+          },
         });
       } else {
         await tx.paymentTransaction.create({
@@ -594,6 +824,8 @@ export class PaymentService {
             amount: chargeAmount,
             currency: Currency.PEN,
             status: PaymentStatus.PENDIENTE,
+            paymentToken: token,
+            paymentTokenAt: new Date(),
           },
         });
       }
@@ -1048,18 +1280,19 @@ export class PaymentService {
   /**
    * Descuento de cuotas: combina descuentos por categoría/usuarios con el
    * descuento por cantidad (quotesNumber). Un descuento con quotesNumber solo
-   * aplica si la cantidad pagada alcanza ese mínimo. Devuelve el mayor %.
+   * aplica si la cantidad pagada alcanza ese mínimo. Devuelve el mayor % junto
+   * con el nombre legible del descuento ganador (o null si no aplica ninguno).
    */
   private async resolveQuotaDiscount(
     userId: string,
     quotaCount: number,
-  ): Promise<number> {
+  ): Promise<{ percentage: number; name: string | null }> {
     const now = new Date();
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { memberCategory: true },
     });
-    if (!user) return 0;
+    if (!user) return { percentage: 0, name: null };
 
     const discounts = await this.prisma.discount.findMany({
       where: {
@@ -1072,22 +1305,30 @@ export class PaymentService {
       include: { users: { where: { userId } } },
     });
 
-    let best = 0;
+    let best: { percentage: number; name: string | null } = {
+      percentage: 0,
+      name: null,
+    };
     for (const d of discounts) {
       // Descuento por cantidad: solo aplica si se pagan suficientes cuotas.
       if (d.quotesNumber && quotaCount < d.quotesNumber) continue;
 
       let applies = false;
-      if (d.targetType === 'ALL') applies = true;
-      else if (d.targetType === 'BY_CATEGORY') {
+      if (d.targetType === DiscountTargetType.ALL) applies = true;
+      else if (d.targetType === DiscountTargetType.BY_CATEGORY) {
         const cats = Array.isArray(d.targetCategories)
           ? (d.targetCategories as string[])
           : [];
         applies = cats.includes(user.memberCategory);
-      } else if (d.targetType === 'SPECIFIC_USERS') {
+      } else if (d.targetType === DiscountTargetType.SPECIFIC_USERS) {
         applies = d.users.length > 0;
       }
-      if (applies && d.percentage > best) best = d.percentage;
+      if (applies && d.percentage > best.percentage) {
+        best = {
+          percentage: d.percentage,
+          name: this.formatDiscountName(d),
+        };
+      }
     }
     return best;
   }
@@ -1121,18 +1362,21 @@ export class PaymentService {
     };
   }
 
-  /** Devuelve el mayor porcentaje de descuento aplicable al usuario. */
+  /**
+   * Devuelve el mayor porcentaje de descuento aplicable al usuario junto con
+   * el nombre legible del descuento ganador (o null si no aplica ninguno).
+   */
   private async resolveDiscount(
     userId: string,
     type: DiscountType,
     activityId?: number,
-  ): Promise<number> {
+  ): Promise<{ percentage: number; name: string | null }> {
     const now = new Date();
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { memberCategory: true },
     });
-    if (!user) return 0;
+    if (!user) return { percentage: 0, name: null };
 
     const discounts = await this.prisma.discount.findMany({
       where: {
@@ -1147,21 +1391,46 @@ export class PaymentService {
       include: { users: { where: { userId } } },
     });
 
-    let best = 0;
+    let best: { percentage: number; name: string | null } = {
+      percentage: 0,
+      name: null,
+    };
     for (const d of discounts) {
       let applies = false;
-      if (d.targetType === 'ALL') applies = true;
-      else if (d.targetType === 'BY_CATEGORY') {
+      if (d.targetType === DiscountTargetType.ALL) applies = true;
+      else if (d.targetType === DiscountTargetType.BY_CATEGORY) {
         const cats = Array.isArray(d.targetCategories)
           ? (d.targetCategories as string[])
           : [];
         applies = cats.includes(user.memberCategory);
-      } else if (d.targetType === 'SPECIFIC_USERS') {
+      } else if (d.targetType === DiscountTargetType.SPECIFIC_USERS) {
         applies = d.users.length > 0;
       }
-      if (applies && d.percentage > best) best = d.percentage;
+      if (applies && d.percentage > best.percentage) {
+        best = {
+          percentage: d.percentage,
+          name: this.formatDiscountName(d),
+        };
+      }
     }
     return best;
+  }
+
+  /** Construye un nombre legible para un descuento. */
+  private formatDiscountName(d: {
+    description: string | null;
+    quotesNumber: number | null;
+    targetType: DiscountTargetType;
+  }): string {
+    if (d.description && d.description.trim()) return d.description.trim();
+    if (d.quotesNumber) return `${d.quotesNumber} cuotas`;
+    if (d.targetType === DiscountTargetType.BY_CATEGORY) {
+      return 'Descuento por categoría';
+    }
+    if (d.targetType === DiscountTargetType.SPECIFIC_USERS) {
+      return 'Descuento personalizado';
+    }
+    return 'Descuento';
   }
 
   private deriveValorUnitario(

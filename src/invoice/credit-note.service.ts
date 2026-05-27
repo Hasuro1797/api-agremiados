@@ -8,6 +8,7 @@ import { Prisma } from 'generated/prisma/client';
 import {
   AttendanceStatus,
   AttendeeType,
+  CancellationStatus,
   InvoiceItemType,
   InvoiceStatus,
   PaymentStatus,
@@ -16,6 +17,7 @@ import {
 } from 'generated/prisma/enums';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { PrismaService, PrismaTx } from 'src/db/prisma.service';
+import { IzipayCancellationService } from 'src/izipay/izipay-cancellation.service';
 import { SunatEmissionService } from 'src/sunat/sunat-emission.service';
 import { InvoiceService } from './invoice.service';
 
@@ -33,6 +35,7 @@ export class CreditNoteService {
     private readonly invoiceService: InvoiceService,
     private readonly sunatEmission: SunatEmissionService,
     private readonly auditLog: AuditLogService,
+    private readonly izipayCancellation: IzipayCancellationService,
   ) {}
 
   /**
@@ -79,6 +82,10 @@ export class CreditNoteService {
       entityId: invoiceId,
       details: { action: 'VOID', reason } as unknown as Prisma.InputJsonValue,
     });
+
+    // Reembolso Izipay (anulación si es mismo día; devolución si ya liquidó).
+    // No bloquea la anulación interna: si falla, queda registrado como FAILED.
+    await this.refundMoney(invoice.orderNumber, reason, userId);
 
     return this.invoiceService.findOne(invoiceId);
   }
@@ -194,12 +201,58 @@ export class CreditNoteService {
       } as unknown as Prisma.InputJsonValue,
     });
 
+    // Reembolso Izipay del comprobante original (el que tiene la transacción).
+    await this.refundMoney(
+      original.orderNumber,
+      reasonDescription,
+      userId,
+      ncId,
+    );
+
     // Emisión SUNAT de la NC (no bloquea; el cron la retoma si falla).
     void this.sunatEmission.emitInvoice(ncId).catch((err) => {
       this.logger.error(`Emisión SUNAT de NC ${ncId} falló`, err);
     });
 
     return this.invoiceService.findOne(ncId);
+  }
+
+  /**
+   * Lista las cancelaciones/devoluciones Izipay con estado FAILED — operaciones
+   * que requieren gestión manual de finanzas.
+   */
+  async pendingRefunds() {
+    return this.prisma.paymentCancellation.findMany({
+      where: { status: CancellationStatus.FAILED },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Dispara la anulación/devolución del dinero en Izipay. Nunca lanza: la
+   * operación contable (anulación interna / NC) ya está registrada; si el
+   * reembolso falla, queda como FAILED en `PaymentCancellation` para gestión
+   * manual.
+   */
+  private async refundMoney(
+    orderNumber: string,
+    reason: string,
+    userId: string,
+    creditNoteId?: string,
+  ) {
+    try {
+      await this.izipayCancellation.cancelOrRefund({
+        orderNumber,
+        reason,
+        performedBy: userId,
+        creditNoteId,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Reembolso Izipay de ${orderNumber} falló (la operación contable se mantiene)`,
+        err as Error,
+      );
+    }
   }
 
   /** Revierte cupos de actividad y cuotas asociadas a las líneas del comprobante. */

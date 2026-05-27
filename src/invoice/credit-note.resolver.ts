@@ -1,9 +1,10 @@
-import { Args, Mutation, Resolver } from '@nestjs/graphql';
+import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { FinanceOnly } from 'src/auth';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import type { JwtPayloadWithAccess } from 'src/auth/types/jwt-payload.type';
 import { CreditNoteService } from './credit-note.service';
 import { InvoiceHeaderEntity } from './entities/invoice-header.entity';
+import { PaymentCancellationEntity } from './entities/payment-cancellation.entity';
 import {
   CreateCreditNoteInput,
   VoidInvoiceInput,
@@ -12,6 +13,16 @@ import {
 @Resolver()
 export class CreditNoteResolver {
   constructor(private readonly creditNoteService: CreditNoteService) {}
+
+  @FinanceOnly()
+  @Query(() => [PaymentCancellationEntity], {
+    name: 'pendingRefunds',
+    description:
+      'Cancelaciones/devoluciones Izipay que quedaron FAILED y requieren gestión manual de finanzas.',
+  })
+  pendingRefunds() {
+    return this.creditNoteService.pendingRefunds();
+  }
 
   @FinanceOnly()
   @Mutation(() => InvoiceHeaderEntity, {

@@ -892,9 +892,45 @@ model PaymentTransaction {
   rawData     Json? // respuesta cruda de Izipay (auditoría / debug)
   processedAt DateTime? // cuando Izipay confirmó el pago
 
+  // Token Izipay vigente. Se reutiliza dentro de los 15 min para evitar el
+  // rechazo de Izipay por orderNumber duplicado al recargar la página.
+  paymentToken   String?
+  paymentTokenAt DateTime?
+
+  cancellations PaymentCancellation[]
+
   createdAt DateTime @default(now())
 
   @@map("payment_transactions")
+}
+
+// Anulaciones (cancel) y devoluciones (refund) de Izipay sobre una transacción.
+// Una transacción puede tener varias (devoluciones parciales / reintentos).
+model PaymentCancellation {
+  id                   String             @id @default(uuid())
+  paymentTransactionId String
+  paymentTransaction   PaymentTransaction @relation(fields: [paymentTransactionId], references: [id], onDelete: Cascade)
+
+  type     CancellationType // ANULACION (cancel) | DEVOLUCION (refund)
+  status   CancellationStatus @default(APPLIED) // APPLIED | FAILED
+  amount   Float // monto anulado/devuelto
+  currency Currency           @default(PEN)
+
+  // Resultado Izipay
+  izipayOperationId String? // refundTransactionId (devolución) / uniqueIdCancel (anulación)
+  responseCode      String? // code Izipay ("00")
+  message           String? // messageFriendly de Izipay
+  rawResponse       Json? // respuesta cruda Izipay (auditoría / debug)
+
+  // Contexto interno
+  reason       String?
+  creditNoteId String? // InvoiceHeader de la NC que originó la devolución (si aplica)
+  performedBy  String? // userId que ejecutó la operación
+
+  createdAt DateTime @default(now())
+
+  @@index([paymentTransactionId])
+  @@map("payment_cancellations")
 }
 
 // Archivos de facturación almacenados en Cloudinary (PDF, XML firmado, CDR ZIP)
@@ -1288,6 +1324,16 @@ enum InvoiceStatus {
   EXPIRADO
   CANCELADO
   FALLIDO
+}
+
+enum CancellationType {
+  ANULACION // Izipay cancel: antes de la liquidación (mismo día)
+  DEVOLUCION // Izipay refund: después de la liquidación (soporta parcial)
+}
+
+enum CancellationStatus {
+  APPLIED
+  FAILED
 }
 
 enum DocumentType {

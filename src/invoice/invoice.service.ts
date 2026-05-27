@@ -20,7 +20,9 @@ import { CreateInvoiceData } from './invoice.types';
 
 const INVOICE_INCLUDE = {
   details: true,
-  transaction: true,
+  transaction: {
+    include: { cancellations: { orderBy: { createdAt: 'desc' } } },
+  },
   billingDocuments: true,
 } satisfies Prisma.InvoiceHeaderInclude;
 

@@ -1,12 +1,14 @@
-import { Args, Int, Mutation, Resolver } from '@nestjs/graphql';
+import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import type { JwtPayloadWithAccess } from 'src/auth/types/jwt-payload.type';
 import { PaymentService } from './payment.service';
 import { GeneratePaymentTokenInput } from './dto/generate-payment-token.input';
 import { ConfirmPaymentInput } from './dto/confirm-payment.input';
+import { PreviewPaymentInput } from './dto/preview-payment.input';
 import { PaymentTokenEntity } from './entities/payment-token.entity';
 import { PaymentResultEntity } from './entities/payment-result.entity';
 import { EnrollmentResultEntity } from './entities/enrollment-result.entity';
+import { PaymentPreviewEntity } from './entities/payment-preview.entity';
 
 @Resolver()
 export class PaymentResolver {
@@ -22,6 +24,18 @@ export class PaymentResolver {
     @CurrentUser() user: JwtPayloadWithAccess,
   ) {
     return this.paymentService.generatePaymentToken(input, user);
+  }
+
+  @Query(() => PaymentPreviewEntity, {
+    name: 'previewPayment',
+    description:
+      'Calcula el desglose del pago (subtotal, descuento, IGV, total) sin crear reserva, marcar cuotas, generar comprobante ni llamar a Izipay. Idempotente; pensada para refrescar el total mientras el usuario edita la selección.',
+  })
+  previewPayment(
+    @Args('input') input: PreviewPaymentInput,
+    @CurrentUser() user: JwtPayloadWithAccess,
+  ) {
+    return this.paymentService.previewPayment(input, user);
   }
 
   @Mutation(() => PaymentResultEntity, {

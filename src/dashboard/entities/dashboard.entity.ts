@@ -16,4 +16,7 @@ export class DashboardStats {
 
   @Field(() => Float, { description: '% de cambio vs ayer' })
   allReservationsPercentage!: number;
+
+  @Field(() => Float, { description: 'Ingresos del mes actual' })
+  monthlyRevenue!: number;
 }

@@ -2,6 +2,7 @@ import { Field, Float, ObjectType } from '@nestjs/graphql';
 import GraphQLJSON from 'graphql-type-json';
 import { Currency, PaymentStatus } from 'generated/prisma/enums';
 import './invoice.enums';
+import { PaymentCancellationEntity } from './payment-cancellation.entity';
 
 @ObjectType()
 export class PaymentTransactionEntity {
@@ -43,6 +44,9 @@ export class PaymentTransactionEntity {
 
   @Field(() => Date, { nullable: true })
   processedAt?: Date;
+
+  @Field(() => [PaymentCancellationEntity], { nullable: true })
+  cancellations?: PaymentCancellationEntity[];
 
   @Field(() => Date)
   createdAt!: Date;

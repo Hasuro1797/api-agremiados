@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   validateSync,
 } from 'class-validator';
@@ -59,6 +60,18 @@ export class EnvConfig {
   @IsString({ message: 'IZIPAY_KEY_HASH es requerido' })
   @IsNotEmpty({ message: 'IZIPAY_KEY_HASH no puede estar vacío' })
   IZIPAY_KEY_HASH!: string;
+
+  // API key (Bearer) para los endpoints de gestión: Anulación / Devolución /
+  // Search. Opcional: si no se define, se usa IZIPAY_PUBLIC_KEY.
+  @IsOptional()
+  @IsString()
+  IZIPAY_API_KEY?: string;
+
+  // Habilita las devoluciones (refund). Requiere credenciales de devolución de
+  // Izipay. En beta normalmente "false" (solo anulación es probable).
+  @IsOptional()
+  @IsString()
+  IZIPAY_REFUND_ENABLED?: string;
 
   @IsString({ message: 'FRONTEND_URL es requerido' })
   @IsNotEmpty({ message: 'FRONTEND_URL no puede estar vacío' })

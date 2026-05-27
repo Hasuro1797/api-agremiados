@@ -1,6 +1,8 @@
 import { registerEnumType } from '@nestjs/graphql';
 import {
   BillingDocType,
+  CancellationStatus,
+  CancellationType,
   DocumentType,
   InvoiceItemType,
   InvoiceStatus,
@@ -44,4 +46,14 @@ registerEnumType(BillingDocType, {
 registerEnumType(PaymentStatus, {
   name: 'PaymentStatus',
   description: 'Estado del pago',
+});
+
+registerEnumType(CancellationType, {
+  name: 'CancellationType',
+  description: 'Tipo de cancelación Izipay: ANULACION (mismo día) o DEVOLUCION',
+});
+
+registerEnumType(CancellationStatus, {
+  name: 'CancellationStatus',
+  description: 'Resultado de la cancelación Izipay (APPLIED o FAILED)',
 });

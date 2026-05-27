@@ -269,6 +269,28 @@ export class SunatEmissionService {
       // 8. Generar y archivar el PDF (representación impresa) si fue aceptado.
       if (accepted) {
         try {
+          // Fetch org branding for the PDF
+          const org = await this.prisma.organization.findUnique({
+            where: { id: config.organizationId },
+            select: {
+              primaryColor: true,
+              accentColor: true,
+              logo: true,
+            },
+          });
+
+          let logoDataUri: string | undefined;
+          if (org?.logo) {
+            try {
+              const res = await fetch(org.logo);
+              const buf = Buffer.from(await res.arrayBuffer());
+              const mime = res.headers.get('content-type') ?? 'image/png';
+              logoDataUri = `data:${mime};base64,${buf.toString('base64')}`;
+            } catch {
+              // Logo fetch failed — skip silently
+            }
+          }
+
           const pdfBuffer = await this.invoicePdf.generate(
             {
               ...invoice,
@@ -279,6 +301,9 @@ export class SunatEmissionService {
               razonSocial: config.razonSocial,
               comercialName: config.comercialName,
               address: config.address,
+              primaryColor: org?.primaryColor,
+              accentColor: org?.accentColor,
+              logoDataUri,
             },
             serie,
             sequential,
