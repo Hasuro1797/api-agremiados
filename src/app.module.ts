@@ -32,6 +32,7 @@ import { SunatModule } from './sunat/sunat.module';
 import { IzipayModule } from './izipay/izipay.module';
 import { InvoiceModule } from './invoice/invoice.module';
 import { PdfModule } from './pdf/pdf.module';
+import { CertificatesModule } from './certificates/certificates.module';
 
 @Module({
   imports: [
@@ -85,6 +86,7 @@ import { PdfModule } from './pdf/pdf.module';
     IzipayModule,
     InvoiceModule,
     PdfModule,
+    CertificatesModule,
   ],
   controllers: [],
   providers: [

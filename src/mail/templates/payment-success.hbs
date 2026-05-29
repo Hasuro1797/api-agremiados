@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Comprobante de pago</title>
+  </head>
+  <body style="font-family: Arial, Helvetica, sans-serif; background:#f4f4f7; margin:0; padding:24px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+      <tr>
+        <td style="background:{{primaryColor}}; padding:20px; text-align:center;">
+          {{#if logoUrl}}<img src="{{logoUrl}}" alt="{{organizationName}}" style="max-height:48px;" />{{else}}<h2 style="color:#fff; margin:0;">{{organizationName}}</h2>{{/if}}
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:32px;">
+          <h2 style="color:#1f2937; margin-top:0;">Hola {{clientName}},</h2>
+          <p style="color:#374151; line-height:1.5;">
+            Recibimos tu pago correctamente. Adjuntamos tu comprobante electrónico
+            <strong>{{docTypeLabel}} {{series}}-{{sequential}}</strong>.
+          </p>
+
+          <table cellpadding="8" cellspacing="0" style="width:100%; margin:24px 0; border-collapse:collapse; background:#f9fafb; border-radius:6px;">
+            <tr>
+              <td style="color:#6b7280;">Concepto</td>
+              <td style="color:#111827; text-align:right;"><strong>{{concept}}</strong></td>
+            </tr>
+            <tr>
+              <td style="color:#6b7280;">Importe</td>
+              <td style="color:#111827; text-align:right;"><strong>{{currency}} {{amount}}</strong></td>
+            </tr>
+            <tr>
+              <td style="color:#6b7280;">Fecha</td>
+              <td style="color:#111827; text-align:right;">{{issueDate}}</td>
+            </tr>
+            <tr>
+              <td style="color:#6b7280;">N° de pedido</td>
+              <td style="color:#111827; text-align:right;">{{orderNumber}}</td>
+            </tr>
+          </table>
+
+          <p style="color:#6b7280; font-size:13px; line-height:1.4;">
+            El comprobante adjunto es válido ante la SUNAT. También puedes consultarlo
+            desde tu portal de miembro.
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td style="background:#f9fafb; padding:16px; text-align:center; color:#9ca3af; font-size:12px;">
+          {{organizationName}}{{#if organizationEmail}} · {{organizationEmail}}{{/if}}{{#if organizationPhone}} · {{organizationPhone}}{{/if}}
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

@@ -1,5 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { DiscountType, Prisma, Status } from 'generated/prisma/client';
+import {
+  DiscountTargetType,
+  DiscountType,
+  Prisma,
+  Status,
+} from 'generated/prisma/client';
 import { PrismaService } from 'src/db/prisma.service';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { FiltersActivityInput } from './dto';
@@ -63,6 +68,7 @@ export class ActivityService {
                   endDate: rangeDiscountDates.to,
                   type: DiscountType.EVENTO,
                   status: Status.ACTIVE,
+                  targetType: DiscountTargetType.ALL,
                 },
               },
             }),
@@ -232,6 +238,7 @@ export class ActivityService {
               startDate: rangeDiscountDates.from,
               endDate: rangeDiscountDates.to,
               status: Status.ACTIVE,
+              targetType: DiscountTargetType.ALL,
             },
           });
         } else {
@@ -244,6 +251,7 @@ export class ActivityService {
               type: DiscountType.EVENTO,
               status: Status.ACTIVE,
               activityId,
+              targetType: DiscountTargetType.ALL,
             },
           });
         }

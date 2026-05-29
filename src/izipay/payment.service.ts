@@ -21,12 +21,14 @@ import {
   Role,
   Status,
 } from 'generated/prisma/enums';
+import { calcDocTotals } from 'lib/tax-calculation';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { RequestSource } from 'src/common/enums';
 import { EnvConfig } from 'src/config';
 import { PrismaService, PrismaTx } from 'src/db/prisma.service';
 import { InvoiceService } from 'src/invoice/invoice.service';
 import { CreateInvoiceLine } from 'src/invoice/invoice.types';
+import { BillingMailService } from 'src/mail/billing-mail.service';
 import { SunatEmissionService } from 'src/sunat/sunat-emission.service';
 import { ConfirmPaymentInput } from './dto/confirm-payment.input';
 import { GeneratePaymentTokenInput } from './dto/generate-payment-token.input';
@@ -73,6 +75,7 @@ export class PaymentService {
     private readonly auditLog: AuditLogService,
     private readonly config: ConfigService<EnvConfig>,
     private readonly sunatEmission: SunatEmissionService,
+    private readonly billingMail: BillingMailService,
   ) {}
 
   // ============================================================
@@ -178,9 +181,20 @@ export class PaymentService {
       unitAmount: round2(q.period.amount),
       amount: round2(q.period.amount),
     }));
+    // Mismo cálculo por línea que generateForQuota: el descuento se aplica al
+    // precio de cada cuota y se redondea por línea (no sobre el total), para que
+    // el preview coincida exactamente con lo que cobrará el comprobante real.
+    const items = valid.map((q) => ({
+      cantidad: 1,
+      valorUnitario: this.deriveValorUnitario(
+        round2(q.period.amount * (1 - percentage / 100)),
+        QUOTA_TAX_AFFECTATION,
+      ),
+      tipoAfectacionIgv: QUOTA_TAX_AFFECTATION,
+    }));
     const subtotal = round2(lines.reduce((s, l) => s + l.amount, 0));
-    const discountAmount = round2((subtotal * percentage) / 100);
-    const total = round2(subtotal - discountAmount);
+    const total = parseFloat(calcDocTotals(items).taxInclusiveAmount);
+    const discountAmount = round2(subtotal - total);
 
     return {
       subtotal,
@@ -256,13 +270,39 @@ export class PaymentService {
       });
     }
 
+    // Mismo cálculo por línea que generateForActivity: precio con descuento
+    // redondeado por línea, una línea por invitado, e IGV vía calcDocTotals
+    // (el mismo helper del comprobante) para que el total cuadre con el cobro.
+    const memberPriceFinal = round2(activity.price * (1 - percentage / 100));
+    const items = [
+      {
+        cantidad: 1,
+        valorUnitario: this.deriveValorUnitario(
+          memberPriceFinal,
+          ACTIVITY_TAX_AFFECTATION,
+        ),
+        tipoAfectacionIgv: ACTIVITY_TAX_AFFECTATION,
+      },
+    ];
+    if (effectiveGuests > 0 && activity.priceInvitee) {
+      const guestVU = this.deriveValorUnitario(
+        round2(activity.priceInvitee * (1 - percentage / 100)),
+        ACTIVITY_TAX_AFFECTATION,
+      );
+      for (let i = 0; i < effectiveGuests; i++) {
+        items.push({
+          cantidad: 1,
+          valorUnitario: guestVU,
+          tipoAfectacionIgv: ACTIVITY_TAX_AFFECTATION,
+        });
+      }
+    }
+
+    const docTotals = calcDocTotals(items);
+    const total = parseFloat(docTotals.taxInclusiveAmount);
+    const igvAmount = docTotals.totalIgv;
     const subtotal = round2(lines.reduce((s, l) => s + l.amount, 0));
-    const discountAmount = round2((subtotal * percentage) / 100);
-    const total = round2(subtotal - discountAmount);
-    // Actividad = gravada ('10'): los precios incluyen IGV. Desglosamos la
-    // base (valor de venta) y el IGV embebido en el total para mostrarlos.
-    const base = round2(total / (1 + IGV_RATE));
-    const igvAmount = round2(total - base);
+    const discountAmount = round2(subtotal - total);
 
     return {
       subtotal,
@@ -642,6 +682,9 @@ export class PaymentService {
       entityId: attendeeId,
       details: { activityId, free: true } as unknown as Prisma.InputJsonValue,
     });
+
+    // Confirmación por correo (fire-and-forget).
+    void this.billingMail.sendFreeEnrollment(currentUser.sub, activityId);
 
     return {
       attendeeId,

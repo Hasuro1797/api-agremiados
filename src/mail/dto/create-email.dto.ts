@@ -6,6 +6,13 @@ import {
   IsString,
 } from 'class-validator';
 
+export interface MailAttachment {
+  filename: string;
+  content: Buffer | string; // Buffer o string base64
+  encoding?: 'base64';
+  contentType?: string;
+}
+
 export class CreateEmailDto {
   @IsArray({
     message: 'Invalid email to field',
@@ -41,4 +48,7 @@ export class CreateEmailDto {
     message: 'Invalid email context field',
   })
   context: Record<string, any>;
+
+  @IsOptional()
+  attachments?: MailAttachment[];
 }

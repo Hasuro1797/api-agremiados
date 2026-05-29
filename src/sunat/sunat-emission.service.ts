@@ -12,6 +12,7 @@ import {
 } from 'generated/prisma/enums';
 import { PrismaService } from 'src/db/prisma.service';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import { BillingMailService } from 'src/mail/billing-mail.service';
 import { DocumentSeriesService } from 'src/settings/billing/document-series/document-series.service';
 import { XmlBuilderService } from './xml-builder/xml-builder.service';
 import { SignatureService } from './signature/signature.service';
@@ -59,6 +60,7 @@ export class SunatEmissionService {
     private readonly documentSeries: DocumentSeriesService,
     private readonly cloudinary: CloudinaryService,
     private readonly invoicePdf: InvoicePdfService,
+    private readonly billingMail: BillingMailService,
   ) {}
 
   /**
@@ -316,6 +318,13 @@ export class SunatEmissionService {
             'pdf',
             baseName,
           );
+
+          // Notificación al cliente con el PDF adjunto (fire-and-forget).
+          if (invoice.sunatDocType === SunatDocType.NOTA_CREDITO) {
+            void this.billingMail.sendCreditNote(invoice.id, pdfBuffer);
+          } else {
+            void this.billingMail.sendPaymentSuccess(invoice.id, pdfBuffer);
+          }
         } catch (pdfErr) {
           // El PDF es complementario: si falla no invalida la aceptación SUNAT.
           this.logger.error(`No se pudo generar el PDF de ${baseName}`, pdfErr);

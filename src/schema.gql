@@ -1226,6 +1226,49 @@ type PaymentPreviewEntity {
   warnings: [String!]!
 }
 
+"""Constancia generada (resultado para el miembro)"""
+type HabilitationCertificateEntity {
+  """URL del PDF (Cloudinary)"""
+  url: String!
+
+  """Folio único (ej. HAB-2026-000001)"""
+  code: String!
+  issuedAt: DateTime!
+  validUntil: DateTime!
+}
+
+"""Resultado de verificación pública de una constancia por folio"""
+type CertificateVerificationEntity {
+  """Es válida y vigente al momento de la consulta"""
+  valid: Boolean!
+  status: EffectiveCertificateStatus!
+  code: String
+  type: CertificateType
+  holderName: String
+  holderMemberCode: String
+  organizationName: String
+  issuedAt: DateTime
+  validUntil: DateTime
+}
+
+"""
+Estado efectivo de la constancia al momento de la consulta (incluye vencimiento)
+"""
+enum EffectiveCertificateStatus {
+  VIGENTE
+  VENCIDO
+  REVOCADO
+  NO_ENCONTRADO
+}
+
+"""Tipo de constancia (habilitación, colegiatura, asistencia)"""
+enum CertificateType {
+  HABILITACION
+  COLEGIATURA
+  ASISTENCIA
+  OTROS
+}
+
 type Query {
   """Verificar si ya hay administradores registrados"""
   haveAdminRegister: Boolean!
@@ -1543,6 +1586,16 @@ type Query {
   Cancelaciones/devoluciones Izipay que quedaron FAILED y requieren gestión manual de finanzas.
   """
   pendingRefunds: [PaymentCancellationEntity!]!
+
+  """
+  Genera (o reutiliza la vigente) la constancia de habilitación del miembro autenticado y devuelve la URL del PDF.
+  """
+  myHabilitationCertificate: HabilitationCertificateEntity!
+
+  """
+  Verificación pública (sin autenticación) de una constancia por folio. Devuelve el estado efectivo y datos básicos del titular.
+  """
+  verifyCertificate(code: String!): CertificateVerificationEntity!
 }
 
 input FiltersActivityInput {

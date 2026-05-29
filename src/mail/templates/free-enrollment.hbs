@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Inscripción confirmada</title>
+  </head>
+  <body style="font-family: Arial, Helvetica, sans-serif; background:#f4f4f7; margin:0; padding:24px;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:8px; overflow:hidden;">
+      <tr>
+        <td style="background:{{primaryColor}}; padding:20px; text-align:center;">
+          {{#if logoUrl}}<img src="{{logoUrl}}" alt="{{organizationName}}" style="max-height:48px;" />{{else}}<h2 style="color:#fff; margin:0;">{{organizationName}}</h2>{{/if}}
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:32px;">
+          <h2 style="color:#1f2937; margin-top:0;">¡Inscripción confirmada, {{clientName}}!</h2>
+          <p style="color:#374151; line-height:1.5;">
+            Tu cupo en <strong>{{activityName}}</strong> está reservado.
+          </p>
+
+          <table cellpadding="8" cellspacing="0" style="width:100%; margin:24px 0; border-collapse:collapse; background:#f9fafb; border-radius:6px;">
+            {{#if activityDate}}
+            <tr>
+              <td style="color:#6b7280;">Fecha</td>
+              <td style="color:#111827; text-align:right;"><strong>{{activityDate}}</strong></td>
+            </tr>
+            {{/if}}
+            {{#if activityLocation}}
+            <tr>
+              <td style="color:#6b7280;">Lugar</td>
+              <td style="color:#111827; text-align:right;">{{activityLocation}}</td>
+            </tr>
+            {{/if}}
+          </table>
+
+          <p style="color:#6b7280; font-size:13px; line-height:1.4;">
+            Te recordaremos antes del evento. Si no puedes asistir, cancela tu cupo
+            desde el portal para liberarlo a otro miembro.
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td style="background:#f9fafb; padding:16px; text-align:center; color:#9ca3af; font-size:12px;">
+          {{organizationName}}{{#if organizationEmail}} · {{organizationEmail}}{{/if}}{{#if organizationPhone}} · {{organizationPhone}}{{/if}}
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

@@ -6,6 +6,7 @@ import {
   CancellationType,
   PaymentStatus,
 } from 'generated/prisma/enums';
+import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { EnvConfig } from 'src/config';
 import { PrismaService } from 'src/db/prisma.service';
 import { IzipayService } from './izipay.service';
@@ -48,6 +49,7 @@ export class IzipayCancellationService {
     private readonly prisma: PrismaService,
     private readonly izipay: IzipayService,
     private readonly config: ConfigService<EnvConfig>,
+    private readonly auditLog: AuditLogService,
   ) {}
 
   private get refundEnabled(): boolean {
@@ -283,7 +285,7 @@ export class IzipayCancellationService {
     return record;
   }
 
-  private record(
+  private async record(
     paymentTransactionId: string,
     data: {
       type: CancellationType;
@@ -299,7 +301,7 @@ export class IzipayCancellationService {
       performedBy?: string;
     },
   ) {
-    return this.prisma.paymentCancellation.create({
+    const created = await this.prisma.paymentCancellation.create({
       data: {
         paymentTransactionId,
         type: data.type,
@@ -315,6 +317,33 @@ export class IzipayCancellationService {
         performedBy: data.performedBy,
       },
     });
+
+    // Auditoría: cada anulación/devolución (APPLIED o FAILED) deja huella.
+    // Acción descriptiva para que finanzas pueda filtrar.
+    try {
+      await this.auditLog.log({
+        userId: data.performedBy,
+        action: `${data.type}_${data.status}`,
+        entity: 'payment_cancellation',
+        entityId: created.id,
+        details: {
+          paymentTransactionId,
+          amount: data.amount,
+          currency: data.currency,
+          izipayOperationId: data.izipayOperationId,
+          responseCode: data.responseCode,
+          message: data.message,
+          reason: data.reason,
+          creditNoteId: data.creditNoteId,
+        } as unknown as Prisma.InputJsonValue,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `AuditLog falló para PaymentCancellation ${created.id}: ${(err as Error).message}`,
+      );
+    }
+
+    return created;
   }
 
   /** Extrae code/message/operationId de la respuesta de cancel o refund. */
