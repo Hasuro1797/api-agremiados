@@ -733,7 +733,7 @@ type SupportCategory {
   name: String!
   description: String
   icon: String
-  defaultPriority: String!
+  defaultPriority: Priority!
   slaDays: Int
   order: Int!
   isActive: Boolean!
@@ -741,10 +741,25 @@ type SupportCategory {
   updatedAt: DateTime!
 }
 
+"""Prioridad de un reclamo o categoría"""
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+type SupportAttachment {
+  mediaId: Int!
+  order: Int!
+  media: Media!
+}
+
 type SupportMessageAuthor {
   id: String!
   name: String!
   paternalSurname: String!
+  maternalSurname: String!
   role: String!
 }
 
@@ -755,6 +770,7 @@ type SupportMessage {
   author: SupportMessageAuthor!
   body: String!
   isInternal: Boolean!
+  attachments: [SupportAttachment!]!
   createdAt: DateTime!
 }
 
@@ -778,8 +794,8 @@ type Support {
   subjectUser: SupportUser
   assignedTo: String
   assignedName: String
-  status: String!
-  priority: String!
+  status: SupportStatus!
+  priority: Priority!
   dueDate: DateTime
   resolvedAt: DateTime
   resolvedBy: String
@@ -794,6 +810,16 @@ type Support {
   messages: [SupportMessage!]!
   createdAt: DateTime!
   updatedAt: DateTime!
+}
+
+"""Estado del reclamo/ticket de soporte"""
+enum SupportStatus {
+  PENDING
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  REJECTED
+  REOPENED
 }
 
 type SupportPaginated {
@@ -1545,8 +1571,8 @@ type Query {
   getActiveSurveys: [Survey!]!
   findOnePublicSurvey(id: Int!): Survey!
   supportCategories: [SupportCategory!]!
-  supports(status: String, priority: String, categoryId: Int, search: String, page: Int = 1, pageSize: Int = 20): SupportPaginated!
-  mySupports(status: String, priority: String, categoryId: Int, search: String, page: Int = 1, pageSize: Int = 20): SupportPaginated!
+  supports(status: SupportStatus, priority: Priority, categoryId: Int, search: String, page: Int = 1, pageSize: Int = 20): SupportPaginated!
+  mySupports(status: SupportStatus, priority: Priority, categoryId: Int, search: String, page: Int = 1, pageSize: Int = 20): SupportPaginated!
   support(id: Int!): Support!
   myNotifications(page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false): NotificationsPaginated!
   myNotificationPreferences: [NotificationPreferenceEntity!]!
@@ -1558,6 +1584,25 @@ type Query {
   Calcula el desglose del pago (subtotal, descuento, IGV, total) sin crear reserva, marcar cuotas, generar comprobante ni llamar a Izipay. Idempotente; pensada para refrescar el total mientras el usuario edita la selección.
   """
   previewPayment(input: PreviewPaymentInput!): PaymentPreviewEntity!
+
+  """
+  Historial de pagos del miembro autenticado (cuotas y actividades). Incluye billingDocuments con la URL del PDF de la boleta/factura cuando ya fue emitida por SUNAT.
+  """
+  myPayments(
+    """Número de página"""
+    page: Int! = 1
+
+    """Cantidad de resultados por página"""
+    pageSize: Int! = 8
+
+    """Filtra por estado del comprobante (ej. PAGADO, FACTURADO)"""
+    status: InvoiceStatus
+
+    """Filtra por tipo: QUOTA (cuotas) o ACTIVITY_ATTENDEE (eventos)"""
+    itemType: InvoiceItemType
+    dateFrom: DateTime
+    dateTo: DateTime
+  ): PaginatedInvoices!
 
   """
   Listar comprobantes con paginación y filtros (estado, SUNAT, fechas, búsqueda)
@@ -1910,10 +1955,34 @@ type Mutation {
   changeStatusSurvey(ids: [Int!]!, status: String!): Boolean!
   submitSurveyResponse(submitSurveyResponseInput: SubmitSurveyResponseInput!): SurveyResponse!
   createSupportCategory(input: CreateSupportCategoryInput!): SupportCategory!
-  createSupport(input: CreateSupportInput!): Support!
+  updateSupportCategory(input: UpdateSupportCategoryInput!): SupportCategory!
+
+  """
+  Activa/desactiva una categoría. No se borra para no romper la referencia desde reclamos existentes.
+  """
+  setSupportCategoryActive(id: Int!, isActive: Boolean!): SupportCategory!
+
+  """
+  Crea un reclamo. Opcionalmente puedes adjuntar archivos (multipart/form-data via graphql-upload); si se incluyen, se publican como un primer mensaje del agremiado en el hilo. Máx. 10.
+  """
+  createSupport(
+    input: CreateSupportInput!
+
+    """Archivos a adjuntar como evidencia del reporte inicial. Máx. 10."""
+    files: [Upload!]
+  ): Support!
   reopenSupport(input: ReopenSupportInput!): Support!
   rateSupportResolution(input: RateSupportInput!): Support!
-  addSupportMessage(input: CreateSupportMessageInput!): SupportMessage!
+
+  """
+  Agrega un mensaje al hilo del reclamo. Acepta hasta 10 archivos adjuntos (multipart/form-data via graphql-upload). Los archivos se suben a Cloudinary y se crean automáticamente como Media con context=SUPPORT.
+  """
+  addSupportMessage(
+    input: CreateSupportMessageInput!
+
+    """Archivos a adjuntar al mensaje. Máx. 10."""
+    files: [Upload!]
+  ): SupportMessage!
   assignSupport(input: AssignSupportInput!): Support!
   resolveSupport(input: ResolveSupportInput!): Support!
   rejectSupport(input: RejectSupportInput!): Support!
@@ -2653,10 +2722,21 @@ input CreateSupportCategoryInput {
   name: String!
   description: String
   icon: String
-  defaultPriority: String
+  defaultPriority: Priority
   slaDays: Int
   order: Int
   isActive: Boolean
+}
+
+input UpdateSupportCategoryInput {
+  name: String
+  description: String
+  icon: String
+  defaultPriority: Priority
+  slaDays: Int
+  order: Int
+  isActive: Boolean
+  id: Int!
 }
 
 input CreateSupportInput {
@@ -2690,7 +2770,7 @@ input AssignSupportInput {
   assignedTo: String!
   assignedName: String!
   dueDate: DateTime
-  priority: String
+  priority: Priority
 }
 
 input ResolveSupportInput {

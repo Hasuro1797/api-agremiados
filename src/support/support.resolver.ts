@@ -1,4 +1,5 @@
 import { Args, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
+import { FileUpload, GraphQLUpload } from 'graphql-upload-ts';
 import { Role } from 'generated/prisma/enums';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
@@ -14,6 +15,7 @@ import {
   ReopenSupportInput,
   ResolveSupportInput,
   SupportFiltersArgs,
+  UpdateSupportCategoryInput,
 } from './dto/index';
 import {
   Support,
@@ -39,9 +41,28 @@ export class SupportResolver {
     return this.supportService.createCategory(input);
   }
 
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Mutation(() => SupportCategory, { name: 'updateSupportCategory' })
+  updateCategory(@Args('input') input: UpdateSupportCategoryInput) {
+    return this.supportService.updateCategory(input);
+  }
+
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Mutation(() => SupportCategory, {
+    name: 'setSupportCategoryActive',
+    description:
+      'Activa/desactiva una categoría. No se borra para no romper la referencia desde reclamos existentes.',
+  })
+  setCategoryActive(
+    @Args('id', { type: () => Int }) id: number,
+    @Args('isActive', { type: () => Boolean }) isActive: boolean,
+  ) {
+    return this.supportService.setCategoryActive(id, isActive);
+  }
+
   // ─── QUERIES ──────────────────────────────────────────────────
 
-  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.MODERATOR)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT_AGENT)
   @Query(() => SupportPaginated, { name: 'supports' })
   findAll(@Args() filters: SupportFiltersArgs) {
     return this.supportService.findAll(filters);
@@ -65,12 +86,23 @@ export class SupportResolver {
 
   // ─── MUTATIONS: AGREMIADO ─────────────────────────────────────
 
-  @Mutation(() => Support, { name: 'createSupport' })
+  @Mutation(() => Support, {
+    name: 'createSupport',
+    description:
+      'Crea un reclamo. Opcionalmente puedes adjuntar archivos (multipart/form-data via graphql-upload); si se incluyen, se publican como un primer mensaje del agremiado en el hilo. Máx. 10.',
+  })
   create(
     @CurrentUser() user: JwtPayloadWithAccess,
     @Args('input') input: CreateSupportInput,
+    @Args('files', {
+      type: () => [GraphQLUpload],
+      nullable: true,
+      description:
+        'Archivos a adjuntar como evidencia del reporte inicial. Máx. 10.',
+    })
+    files?: Promise<FileUpload>[],
   ) {
-    return this.supportService.create(user.sub, input);
+    return this.supportService.create(user.sub, input, files);
   }
 
   @Mutation(() => Support, { name: 'reopenSupport' })
@@ -91,17 +123,27 @@ export class SupportResolver {
 
   // ─── MUTATIONS: COMPARTIDAS (admin + agremiado del reclamo) ───
 
-  @Mutation(() => SupportMessage, { name: 'addSupportMessage' })
+  @Mutation(() => SupportMessage, {
+    name: 'addSupportMessage',
+    description:
+      'Agrega un mensaje al hilo del reclamo. Acepta hasta 10 archivos adjuntos (multipart/form-data via graphql-upload). Los archivos se suben a Cloudinary y se crean automáticamente como Media con context=SUPPORT.',
+  })
   addMessage(
     @CurrentUser() user: JwtPayloadWithAccess,
     @Args('input') input: CreateSupportMessageInput,
+    @Args('files', {
+      type: () => [GraphQLUpload],
+      nullable: true,
+      description: 'Archivos a adjuntar al mensaje. Máx. 10.',
+    })
+    files?: Promise<FileUpload>[],
   ) {
-    return this.supportService.addMessage(user.sub, user.role, input);
+    return this.supportService.addMessage(user.sub, user.role, input, files);
   }
 
   // ─── MUTATIONS: ADMIN ─────────────────────────────────────────
 
-  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.MODERATOR)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT_AGENT)
   @Mutation(() => Support, { name: 'assignSupport' })
   assign(
     @CurrentUser() user: JwtPayloadWithAccess,
@@ -110,7 +152,7 @@ export class SupportResolver {
     return this.supportService.assign(user.sub, input);
   }
 
-  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.MODERATOR)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT_AGENT)
   @Mutation(() => Support, { name: 'resolveSupport' })
   resolve(
     @CurrentUser() user: JwtPayloadWithAccess,
@@ -119,7 +161,7 @@ export class SupportResolver {
     return this.supportService.resolve(user.sub, input);
   }
 
-  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.MODERATOR)
+  @Roles(Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT_AGENT)
   @Mutation(() => Support, { name: 'rejectSupport' })
   reject(
     @CurrentUser() user: JwtPayloadWithAccess,

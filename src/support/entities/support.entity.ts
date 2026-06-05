@@ -2,6 +2,7 @@ import { ObjectType, Field, Int } from '@nestjs/graphql';
 import { Priority, SupportStatus } from 'generated/prisma/enums';
 import { SupportCategory } from './support-category.entity';
 import { SupportMessage } from './support-message.entity';
+import './support.enums';
 
 @ObjectType()
 export class SupportUser {
@@ -56,10 +57,10 @@ export class Support {
   @Field(() => String, { nullable: true })
   assignedName?: string;
 
-  @Field(() => String)
+  @Field(() => SupportStatus)
   status!: SupportStatus;
 
-  @Field(() => String)
+  @Field(() => Priority)
   priority!: Priority;
 
   @Field(() => Date, { nullable: true })

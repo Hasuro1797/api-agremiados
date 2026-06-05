@@ -7,3 +7,4 @@ export { ReopenSupportInput } from './reopen-support.input';
 export { RateSupportInput } from './rate-support.input';
 export { SupportFiltersArgs } from './support-filters.args';
 export { CreateSupportCategoryInput } from './create-support-category.input';
+export { UpdateSupportCategoryInput } from './update-support-category.input';

@@ -1,6 +1,6 @@
 import { Field, InputType, Int } from '@nestjs/graphql';
 import {
-  IsDateString,
+  IsDate,
   IsEnum,
   IsInt,
   IsOptional,
@@ -8,6 +8,7 @@ import {
   IsUUID,
 } from 'class-validator';
 import { Priority } from 'generated/prisma/enums';
+import '../entities/support.enums';
 
 @InputType()
 export class AssignSupportInput {
@@ -24,12 +25,12 @@ export class AssignSupportInput {
   assignedName!: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDate()
   @Field(() => Date, { nullable: true })
   dueDate?: Date;
 
   @IsOptional()
   @IsEnum(Priority)
-  @Field(() => String, { nullable: true })
+  @Field(() => Priority, { nullable: true })
   priority?: Priority;
 }

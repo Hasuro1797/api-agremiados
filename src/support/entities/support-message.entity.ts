@@ -1,4 +1,5 @@
 import { ObjectType, Field, Int } from '@nestjs/graphql';
+import { SupportAttachment } from './support-attachment.entity';
 
 @ObjectType()
 export class SupportMessageAuthor {
@@ -10,6 +11,9 @@ export class SupportMessageAuthor {
 
   @Field(() => String)
   paternalSurname!: string;
+
+  @Field(() => String)
+  maternalSurname!: string;
 
   @Field(() => String)
   role!: string;
@@ -34,6 +38,9 @@ export class SupportMessage {
 
   @Field(() => Boolean)
   isInternal!: boolean;
+
+  @Field(() => [SupportAttachment])
+  attachments!: SupportAttachment[];
 
   @Field(() => Date)
   createdAt!: Date;

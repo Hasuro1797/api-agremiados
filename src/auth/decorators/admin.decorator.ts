@@ -12,7 +12,6 @@ const ALL_STAFF: Role[] = [
   Role.CONTENT_EDITOR,
   Role.SUPPORT_AGENT,
   Role.SECRETARY,
-  Role.MODERATOR,
 ];
 
 /** Cualquier rol de staff (todos excepto MEMBER). */
@@ -47,14 +46,14 @@ export const EventsOnly = () =>
 export const ContentOnly = () =>
   applyDecorators(
     UseGuards(GqlAccessTokenGuard, RolesGuard),
-    Roles(Role.SUPERADMIN, Role.ADMIN, Role.CONTENT_EDITOR, Role.MODERATOR),
+    Roles(Role.SUPERADMIN, Role.ADMIN, Role.CONTENT_EDITOR),
   );
 
 /** Soporte / tickets. */
 export const SupportOnly = () =>
   applyDecorators(
     UseGuards(GqlAccessTokenGuard, RolesGuard),
-    Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPPORT_AGENT, Role.MODERATOR),
+    Roles(Role.SUPERADMIN, Role.ADMIN, Role.SUPPORT_AGENT),
   );
 
 /** Gestión de miembros y sanciones. */

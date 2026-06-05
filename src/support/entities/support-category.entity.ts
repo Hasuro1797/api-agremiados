@@ -1,5 +1,6 @@
 import { ObjectType, Field, Int } from '@nestjs/graphql';
 import { Priority } from 'generated/prisma/enums';
+import './support.enums';
 
 @ObjectType()
 export class SupportCategory {
@@ -15,7 +16,7 @@ export class SupportCategory {
   @Field(() => String, { nullable: true })
   icon?: string;
 
-  @Field(() => String)
+  @Field(() => Priority)
   defaultPriority!: Priority;
 
   @Field(() => Int, { nullable: true })

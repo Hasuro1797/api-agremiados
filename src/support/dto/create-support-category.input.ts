@@ -9,6 +9,7 @@ import {
   Min,
 } from 'class-validator';
 import { Priority } from 'generated/prisma/enums';
+import '../entities/support.enums';
 
 @InputType()
 export class CreateSupportCategoryInput {
@@ -29,7 +30,7 @@ export class CreateSupportCategoryInput {
 
   @IsOptional()
   @IsEnum(Priority)
-  @Field(() => String, { nullable: true })
+  @Field(() => Priority, { nullable: true })
   defaultPriority?: Priority;
 
   @IsOptional()

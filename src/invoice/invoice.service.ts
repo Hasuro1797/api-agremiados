@@ -3,6 +3,7 @@ import { Prisma } from 'generated/prisma/client';
 import {
   Currency,
   DocumentType,
+  InvoiceStatus,
   SaleCondition,
   SunatDocType,
 } from 'generated/prisma/enums';
@@ -16,6 +17,7 @@ import {
   isInafectoOneroso,
 } from 'lib/tax-calculation';
 import { InvoiceFilterArgs } from './dto/invoice-filter.args';
+import { MyPaymentsArgs } from './dto/my-payments.args';
 import { CreateInvoiceData } from './invoice.types';
 
 const INVOICE_INCLUDE = {
@@ -201,6 +203,52 @@ export class InvoiceService {
           { documentNumber: { contains: filters.search, mode: 'insensitive' } },
           { clientName: { contains: filters.search, mode: 'insensitive' } },
         ],
+      }),
+    };
+
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.invoiceHeader.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: pageSize,
+        skip: (page - 1) * pageSize,
+        include: INVOICE_INCLUDE,
+      }),
+      this.prisma.invoiceHeader.count({ where }),
+    ]);
+
+    return {
+      data: rows.map((r) => this.toEntity(r)),
+      meta: { total, page, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  /**
+   * Historial de pagos del miembro autenticado. El userId se fuerza desde el
+   * token (un miembro no puede consultar comprobantes de otro). Excluye las
+   * reservas que nunca llegaron a pagarse (PENDIENTE/EXPIRADO) para no mostrar
+   * "pagos" que en realidad no ocurrieron.
+   */
+  async findMyInvoices(userId: string, filters: MyPaymentsArgs) {
+    const { page, pageSize } = filters;
+
+    const where: Prisma.InvoiceHeaderWhereInput = {
+      userId,
+      ...(filters.status
+        ? { status: filters.status }
+        : {
+            status: {
+              notIn: [InvoiceStatus.PENDIENTE, InvoiceStatus.EXPIRADO],
+            },
+          }),
+      ...(filters.itemType && {
+        details: { some: { itemType: filters.itemType } },
+      }),
+      ...((filters.dateFrom || filters.dateTo) && {
+        createdAt: {
+          ...(filters.dateFrom && { gte: filters.dateFrom }),
+          ...(filters.dateTo && { lte: filters.dateTo }),
+        },
       }),
     };
 

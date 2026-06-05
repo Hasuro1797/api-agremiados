@@ -112,7 +112,7 @@ export class AuthService {
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ email: identifier }, { dni: identifier }],
-        role: { in: [Role.SUPERADMIN, Role.ADMIN, Role.MODERATOR] },
+        role: { not: Role.MEMBER },
       },
     });
 

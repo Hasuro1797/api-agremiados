@@ -5,10 +5,18 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { FileUpload } from 'graphql-upload-ts';
 import { PrismaService } from 'src/db/prisma.service';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { NotificationService } from 'src/notification/notification.service';
-import { Priority, Role, SupportStatus } from 'generated/prisma/enums';
+import {
+  MediaContext,
+  Priority,
+  Role,
+  SupportStatus,
+} from 'generated/prisma/enums';
+import type { CloudinaryResponse } from 'src/cloudinary/types/cloudinary-response';
 import {
   AssignSupportInput,
   CreateSupportCategoryInput,
@@ -19,7 +27,10 @@ import {
   ReopenSupportInput,
   ResolveSupportInput,
   SupportFiltersArgs,
+  UpdateSupportCategoryInput,
 } from './dto/index';
+
+const MAX_ATTACHMENTS_PER_MESSAGE = 10;
 
 const USER_SELECT = {
   id: true,
@@ -31,7 +42,17 @@ const USER_SELECT = {
 
 const MESSAGE_INCLUDE = {
   author: {
-    select: { id: true, name: true, paternalSurname: true, role: true },
+    select: {
+      id: true,
+      name: true,
+      paternalSurname: true,
+      maternalSurname: true,
+      role: true,
+    },
+  },
+  attachments: {
+    orderBy: { order: 'asc' },
+    include: { media: true },
   },
 } as const;
 
@@ -43,6 +64,7 @@ export class SupportService {
     private prisma: PrismaService,
     private auditLog: AuditLogService,
     private notification: NotificationService,
+    private cloudinary: CloudinaryService,
   ) {}
 
   // ─── CATEGORIES ───────────────────────────────────────────────
@@ -58,14 +80,31 @@ export class SupportService {
     return this.prisma.supportCategory.create({ data: input });
   }
 
-  async updateCategory(id: number, input: Partial<CreateSupportCategoryInput>) {
+  async updateCategory(input: UpdateSupportCategoryInput) {
+    const { id, ...data } = input;
     await this.findCategoryOrFail(id);
-    return this.prisma.supportCategory.update({ where: { id }, data: input });
+    return this.prisma.supportCategory.update({ where: { id }, data });
+  }
+
+  /**
+   * Activa o desactiva una categoría sin eliminarla (los reclamos existentes
+   * referencian categoryId y se rompería su lectura si la borráramos).
+   */
+  async setCategoryActive(id: number, isActive: boolean) {
+    await this.findCategoryOrFail(id);
+    return this.prisma.supportCategory.update({
+      where: { id },
+      data: { isActive },
+    });
   }
 
   // ─── CREATE ───────────────────────────────────────────────────
 
-  async create(userId: string, input: CreateSupportInput) {
+  async create(
+    userId: string,
+    input: CreateSupportInput,
+    files?: Promise<FileUpload>[],
+  ) {
     const { categoryId, subjectUserId, ...rest } = input;
 
     let dueDate: Date | undefined;
@@ -92,23 +131,58 @@ export class SupportService {
       if (!exists) throw new NotFoundException('Usuario sujeto no encontrado');
     }
 
-    const support = await this.prisma.support.create({
-      data: {
-        ...rest,
-        userId,
-        categoryId,
-        subjectUserId,
-        status: SupportStatus.PENDING,
-        priority,
-        dueDate,
-      },
-      include: {
-        user: { select: USER_SELECT },
-        category: true,
-        subjectUser: { select: USER_SELECT },
-        messages: { include: MESSAGE_INCLUDE },
-      },
-    });
+    const fileList = files ?? [];
+    if (fileList.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+      throw new BadRequestException(
+        `Máximo ${MAX_ATTACHMENTS_PER_MESSAGE} adjuntos en el reporte inicial`,
+      );
+    }
+
+    // Si hay archivos, suben ANTES de crear el reclamo. Si crear el reclamo
+    // falla, compensamos borrándolos para no dejar huérfanos.
+    const uploaded = await this.uploadSupportFiles(fileList);
+
+    let support: any; // prisma.support.create con include dinámico no infiere relaciones
+    try {
+      support = await this.prisma.support.create({
+        data: {
+          ...rest,
+          userId,
+          categoryId,
+          subjectUserId,
+          status: SupportStatus.PENDING,
+          priority,
+          dueDate,
+          // Si el agremiado adjuntó evidencia al crear, registramos un primer
+          // mensaje del propio agremiado con esos archivos. Sin archivos, el
+          // hilo arranca vacío (los detalles viven en Support.details).
+          ...(uploaded.mediaIds.length > 0 && {
+            messages: {
+              create: {
+                authorId: userId,
+                body: rest.details,
+                isInternal: false,
+                attachments: {
+                  create: uploaded.mediaIds.map((mediaId, order) => ({
+                    mediaId,
+                    order,
+                  })),
+                },
+              },
+            },
+          }),
+        },
+        include: {
+          user: { select: USER_SELECT },
+          category: true,
+          subjectUser: { select: USER_SELECT },
+          messages: { include: MESSAGE_INCLUDE, orderBy: { createdAt: 'asc' } },
+        },
+      });
+    } catch (err) {
+      await this.rollbackUploads(uploaded);
+      throw err;
+    }
 
     await this.auditLog.log({
       userId,
@@ -240,6 +314,7 @@ export class SupportService {
     authorId: string,
     authorRole: Role,
     input: CreateSupportMessageInput,
+    files?: Promise<FileUpload>[],
   ) {
     const { supportId, body, isInternal = false } = input;
 
@@ -261,20 +336,117 @@ export class SupportService {
       );
     }
 
-    const message = await this.prisma.supportMessage.create({
-      data: { supportId, authorId, body, isInternal },
-      include: MESSAGE_INCLUDE,
-    });
-
-    // Marca primera respuesta del admin
-    if (authorRole !== Role.MEMBER && !support.respondedAt) {
-      await this.prisma.support.update({
-        where: { id: supportId },
-        data: { respondedAt: new Date() },
-      });
+    const fileList = files ?? [];
+    if (fileList.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+      throw new BadRequestException(
+        `Máximo ${MAX_ATTACHMENTS_PER_MESSAGE} adjuntos por mensaje`,
+      );
     }
 
-    return message;
+    // Sube los archivos PRIMERO (fuera de la transacción de DB) y los registra
+    // como Media con context=SUPPORT. Si luego falla la escritura del mensaje,
+    // compensamos borrando los Cloudinary uploads para no dejar huérfanos.
+    const uploaded = await this.uploadSupportFiles(fileList);
+
+    try {
+      const message = await this.prisma.supportMessage.create({
+        data: {
+          supportId,
+          authorId,
+          body,
+          isInternal,
+          ...(uploaded.mediaIds.length > 0 && {
+            attachments: {
+              create: uploaded.mediaIds.map((mediaId, order) => ({
+                mediaId,
+                order,
+              })),
+            },
+          }),
+        },
+        include: MESSAGE_INCLUDE,
+      });
+
+      // Marca primera respuesta del admin
+      if (authorRole !== Role.MEMBER && !support.respondedAt) {
+        await this.prisma.support.update({
+          where: { id: supportId },
+          data: { respondedAt: new Date() },
+        });
+      }
+
+      return message;
+    } catch (err) {
+      await this.rollbackUploads(uploaded);
+      throw err;
+    }
+  }
+
+  /**
+   * Sube los archivos a Cloudinary y crea las filas Media (context=SUPPORT).
+   * Si falla a mitad de camino, limpia lo ya subido antes de relanzar el error.
+   */
+  private async uploadSupportFiles(
+    files: Promise<FileUpload>[],
+  ): Promise<{ mediaIds: number[]; cloudinaryIds: string[] }> {
+    const cloudinaryIds: string[] = [];
+    const mediaIds: number[] = [];
+
+    try {
+      for (const filePromise of files) {
+        const file = await filePromise;
+        const cloud: CloudinaryResponse = await this.cloudinary.upload(
+          file.createReadStream(),
+          {
+            folder: 'support',
+            resource_type: 'auto',
+            public_id: `support_${Date.now()}_${file.filename}`,
+          },
+        );
+        cloudinaryIds.push(cloud.public_id as string);
+
+        const media = await this.prisma.media.create({
+          data: {
+            title: file.filename,
+            url: cloud.secure_url,
+            publicId: cloud.public_id,
+            resourceType: cloud.resource_type,
+            type: cloud.format,
+            bytes: cloud.bytes,
+            width: cloud.width,
+            height: cloud.height,
+            format: cloud.format,
+            context: MediaContext.SUPPORT,
+          },
+        });
+        mediaIds.push(media.id);
+      }
+      return { mediaIds, cloudinaryIds };
+    } catch (err) {
+      await this.rollbackUploads({ mediaIds, cloudinaryIds });
+      throw err;
+    }
+  }
+
+  /** Limpia uploads parciales: borra filas Media y archivos en Cloudinary. */
+  private async rollbackUploads(uploaded: {
+    mediaIds: number[];
+    cloudinaryIds: string[];
+  }): Promise<void> {
+    if (uploaded.mediaIds.length > 0) {
+      await this.prisma.media
+        .deleteMany({ where: { id: { in: uploaded.mediaIds } } })
+        .catch((e) =>
+          this.logger.warn(`No se pudo limpiar Media tras fallo: ${e}`),
+        );
+    }
+    for (const publicId of uploaded.cloudinaryIds) {
+      await this.cloudinary
+        .delete(publicId)
+        .catch((e) =>
+          this.logger.warn(`No se pudo limpiar Cloudinary ${publicId}: ${e}`),
+        );
+    }
   }
 
   // ─── WORKFLOW ─────────────────────────────────────────────────
@@ -572,7 +744,9 @@ export class SupportService {
     context: Record<string, string | number>,
   ): Promise<void> {
     const admins = await this.prisma.user.findMany({
-      where: { role: { in: [Role.ADMIN, Role.SUPERADMIN, Role.MODERATOR] } },
+      where: {
+        role: { in: [Role.ADMIN, Role.SUPERADMIN, Role.SUPPORT_AGENT] },
+      },
       select: { id: true },
     });
     await this.notification.notifyMany(

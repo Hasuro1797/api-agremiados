@@ -1,17 +1,18 @@
 import { ArgsType, Field, Int } from '@nestjs/graphql';
 import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { Priority, SupportStatus } from 'generated/prisma/enums';
+import '../entities/support.enums';
 
 @ArgsType()
 export class SupportFiltersArgs {
   @IsOptional()
   @IsEnum(SupportStatus)
-  @Field(() => String, { nullable: true })
+  @Field(() => SupportStatus, { nullable: true })
   status?: SupportStatus;
 
   @IsOptional()
   @IsEnum(Priority)
-  @Field(() => String, { nullable: true })
+  @Field(() => Priority, { nullable: true })
   priority?: Priority;
 
   @IsOptional()
