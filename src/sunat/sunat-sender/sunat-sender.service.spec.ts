@@ -13,7 +13,11 @@ describe('SunatSenderService', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn().mockReturnValue('https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService'),
+            get: jest
+              .fn()
+              .mockReturnValue(
+                'https://e-beta.sunat.gob.pe/ol-ti-itcpfegem-beta/billService',
+              ),
           },
         },
         {

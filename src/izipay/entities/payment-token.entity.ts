@@ -3,7 +3,9 @@ import GraphQLJSON from 'graphql-type-json';
 
 @ObjectType()
 export class PaymentTokenEntity {
-  @Field(() => String, { description: 'Token de sesión para el formulario Izipay' })
+  @Field(() => String, {
+    description: 'Token de sesión para el formulario Izipay',
+  })
   token!: string;
 
   @Field(() => String, { description: 'transactionId a usar en el callback' })
@@ -15,7 +17,9 @@ export class PaymentTokenEntity {
   @Field(() => String, { description: 'ID del InvoiceHeader creado' })
   invoiceId!: string;
 
-  @Field(() => Float, { description: 'Importe a cobrar (moneda mayor, ej. soles)' })
+  @Field(() => Float, {
+    description: 'Importe a cobrar (moneda mayor, ej. soles)',
+  })
   amount!: number;
 
   @Field(() => String, {
@@ -35,7 +39,8 @@ export class PaymentTokenEntity {
 
   @Field(() => GraphQLJSON, {
     nullable: true,
-    description: 'Respuesta cruda de Izipay (por si el SDK frontend la necesita)',
+    description:
+      'Respuesta cruda de Izipay (por si el SDK frontend la necesita)',
   })
   raw?: unknown;
 }

@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma, SurveyStatus } from 'generated/prisma/client';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { PrismaService } from 'src/db/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { CreateSurveyInput } from './dto/create-survey.input';
 import { FiltersSurveyInput } from './dto/filters.arg';
 import { SubmitSurveyResponseInput } from './dto/submit-survey.input';
@@ -22,6 +24,7 @@ export class SurveyService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly notification: NotificationService,
   ) {}
 
   async create(createSurveyInput: CreateSurveyInput, adminUserId?: string) {
@@ -264,6 +267,14 @@ export class SurveyService {
     status: SurveyStatus,
     adminUserId?: string,
   ) {
+    const newlyPublished =
+      status === SurveyStatus.ACTIVE
+        ? await this.prismaService.survey.findMany({
+            where: { id: { in: ids }, status: { not: SurveyStatus.ACTIVE } },
+            select: { id: true, title: true, endDate: true },
+          })
+        : [];
+
     await this.prismaService.survey.updateMany({
       where: { id: { in: ids } },
       data: { status },
@@ -275,6 +286,22 @@ export class SurveyService {
       entity: 'survey',
       details: { ids, status } as Prisma.InputJsonValue,
     });
+
+    for (const survey of newlyPublished) {
+      void this.notification
+        .broadcastToActiveMembers({
+          templateCode: TriggerKey.SURVEY_PUBLISHED,
+          triggerKey: TriggerKey.SURVEY_PUBLISHED,
+          link: links.survey(survey.id),
+          context: {
+            title: survey.title,
+            deadline: survey.endDate
+              ? survey.endDate.toLocaleDateString('es-PE')
+              : 'Sin fecha límite',
+          },
+        })
+        .catch(() => undefined);
+    }
 
     return true;
   }

@@ -9,6 +9,8 @@ import { MemberCategory, Role, UserStatus } from 'generated/prisma/enums';
 import { PrismaService } from 'src/db/prisma.service';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { QuotaService } from 'src/quotas/quota.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { CreateMemberInput } from './dto/create-member.input';
 import { UpdateMemberInput } from './dto/update-member.input';
 import { FiltersMemberInput } from './dto/filter-member.args';
@@ -19,6 +21,7 @@ export class MemberService {
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
     private readonly quotaService: QuotaService,
+    private readonly notification: NotificationService,
   ) {}
 
   async create(input: CreateMemberInput, adminUserId: string) {
@@ -66,6 +69,17 @@ export class MemberService {
       entityId: member.id,
       details: { name: member.name, email: member.email },
     });
+
+    // Bienvenida al agremiado (su cuenta queda activa al crearse).
+    void this.notification
+      .notify({
+        userId: member.id,
+        templateCode: TriggerKey.MEMBER_WELCOME,
+        triggerKey: TriggerKey.MEMBER_WELCOME,
+        link: links.profile(),
+        context: { userName: member.name },
+      })
+      .catch(() => undefined);
 
     return member;
   }

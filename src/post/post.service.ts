@@ -4,6 +4,8 @@ import { FileUpload } from 'graphql-upload-ts';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/db/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { CreatePostInput } from './dto/create-post.input';
 import { FiltersPostInput } from './dto/filters.arg';
 import { UpdatePostInput } from './dto/update-post.input';
@@ -14,6 +16,7 @@ export class PostService {
     private readonly prismaService: PrismaService,
     private readonly auditLog: AuditLogService,
     private readonly cloudinary: CloudinaryService,
+    private readonly notification: NotificationService,
   ) {}
 
   private async uploadCover(file: Promise<FileUpload>) {
@@ -175,6 +178,15 @@ export class PostService {
   }
 
   async changeStatusPost(ids: number[], status: Status, adminUserId?: string) {
+    // Solo difundimos los que pasan de NO publicados a ACTIVE (evita reenvíos).
+    const newlyPublished =
+      status === Status.ACTIVE
+        ? await this.prismaService.post.findMany({
+            where: { id: { in: ids }, status: { not: Status.ACTIVE } },
+            select: { id: true, title: true },
+          })
+        : [];
+
     await this.prismaService.post.updateMany({
       where: { id: { in: ids } },
       data: { status },
@@ -185,6 +197,18 @@ export class PostService {
       entity: 'post',
       details: { ids, status } as Prisma.InputJsonValue,
     });
+
+    for (const post of newlyPublished) {
+      void this.notification
+        .broadcastToActiveMembers({
+          templateCode: TriggerKey.POST_PUBLISHED,
+          triggerKey: TriggerKey.POST_PUBLISHED,
+          link: links.post(post.id),
+          context: { title: post.title },
+        })
+        .catch(() => undefined);
+    }
+
     return true;
   }
 

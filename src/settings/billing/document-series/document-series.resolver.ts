@@ -41,9 +41,7 @@ class NextCorrelativoResult {
 
 @Resolver()
 export class DocumentSeriesResolver {
-  constructor(
-    private readonly documentSeriesService: DocumentSeriesService,
-  ) {}
+  constructor(private readonly documentSeriesService: DocumentSeriesService) {}
 
   @FinanceOnly()
   @Query(() => [DocumentSeriesEntity], {

@@ -1,13 +1,13 @@
-import { InputType, Field, Int, Float } from '@nestjs/graphql';
+import { Field, Float, InputType } from '@nestjs/graphql';
 import {
-  IsNotEmpty,
-  IsString,
-  IsNumber,
-  IsPositive,
-  IsOptional,
   IsBoolean,
-  IsUUID,
   IsEnum,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
 } from 'class-validator';
 import { Currency } from 'generated/prisma/enums';
 

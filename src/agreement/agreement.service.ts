@@ -4,6 +4,8 @@ import { FileUpload } from 'graphql-upload-ts';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { PrismaService } from 'src/db/prisma.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { CreateAgreementInput } from './dto/create-agreement.input';
 import { FiltersAgreementInput } from './dto/filters.args';
 import { UpdateAgreementInput } from './dto/update-agreement.input';
@@ -14,6 +16,7 @@ export class AgreementService {
     private readonly prismaService: PrismaService,
     private readonly auditLog: AuditLogService,
     private readonly cloudinary: CloudinaryService,
+    private readonly notification: NotificationService,
   ) {}
 
   private async uploadCover(file: Promise<FileUpload>) {
@@ -189,6 +192,14 @@ export class AgreementService {
     status: Status,
     adminUserId?: string,
   ) {
+    const newlyPublished =
+      status === Status.ACTIVE
+        ? await this.prismaService.agreement.findMany({
+            where: { id: { in: ids }, status: { not: Status.ACTIVE } },
+            select: { id: true, title: true },
+          })
+        : [];
+
     await this.prismaService.agreement.updateMany({
       where: { id: { in: ids } },
       data: { status },
@@ -199,6 +210,18 @@ export class AgreementService {
       entity: 'agreement',
       details: { ids, status } as Prisma.InputJsonValue,
     });
+
+    for (const agreement of newlyPublished) {
+      void this.notification
+        .broadcastToActiveMembers({
+          templateCode: TriggerKey.AGREEMENT_PUBLISHED,
+          triggerKey: TriggerKey.AGREEMENT_PUBLISHED,
+          link: links.agreement(agreement.id),
+          context: { title: agreement.title },
+        })
+        .catch(() => undefined);
+    }
+
     return true;
   }
 

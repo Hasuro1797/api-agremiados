@@ -4,11 +4,17 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { Roles } from 'src/auth/decorators/roles.decorator';
 import type { JwtPayloadWithAccess } from 'src/auth/types/jwt-payload.type';
 import { NotificationService } from './notification.service';
-import { MyNotificationsArgs, UpdateNotificationPreferenceInput } from './dto';
 import {
+  MyNotificationsArgs,
+  SendAnnouncementInput,
+  UpdateNotificationPreferenceInput,
+} from './dto';
+import {
+  AnnouncementResultEntity,
   NotificationEntity,
   NotificationPreferenceEntity,
   NotificationsPaginated,
+  NotificationTriggerEntity,
 } from './entities';
 
 @Resolver()
@@ -41,6 +47,20 @@ export class NotificationResolver {
     return this.notificationService.markAllRead(user.sub);
   }
 
+  @Query(() => [NotificationTriggerEntity], {
+    name: 'notificationCatalog',
+    description:
+      'Catálogo de triggers para pintar la pantalla de preferencias. ' +
+      'Filtra por audiencia: los agremiados solo ven los MEMBER.',
+  })
+  notificationCatalog(@CurrentUser() user: JwtPayloadWithAccess) {
+    const isStaff =
+      user.role === Role.ADMIN ||
+      user.role === Role.SUPERADMIN ||
+      user.role === Role.MODERATOR;
+    return this.notificationService.getCatalog(isStaff ? undefined : 'MEMBER');
+  }
+
   @Query(() => [NotificationPreferenceEntity], {
     name: 'myNotificationPreferences',
   })
@@ -61,6 +81,15 @@ export class NotificationResolver {
       input.channel,
       input.enabled,
     );
+  }
+
+  @Roles(Role.ADMIN, Role.SUPERADMIN)
+  @Mutation(() => AnnouncementResultEntity, { name: 'sendAnnouncement' })
+  sendAnnouncement(
+    @CurrentUser() user: JwtPayloadWithAccess,
+    @Args('input') input: SendAnnouncementInput,
+  ) {
+    return this.notificationService.sendAnnouncement(input, user.sub);
   }
 
   @Roles(Role.ADMIN, Role.SUPERADMIN)

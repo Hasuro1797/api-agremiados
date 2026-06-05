@@ -16,7 +16,8 @@ export class MyPaymentsArgs extends PaginationArgs {
 
   @Field(() => InvoiceItemType, {
     nullable: true,
-    description: 'Filtra por tipo: QUOTA (cuotas) o ACTIVITY_ATTENDEE (eventos)',
+    description:
+      'Filtra por tipo: QUOTA (cuotas) o ACTIVITY_ATTENDEE (eventos)',
   })
   @IsOptional()
   @IsEnum(InvoiceItemType)

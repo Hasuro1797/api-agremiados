@@ -21,7 +21,8 @@ export class ConfirmPaymentInput {
 
   @Field(() => String, {
     nullable: true,
-    description: 'String firmado por Izipay (payloadHttp) para validar la firma',
+    description:
+      'String firmado por Izipay (payloadHttp) para validar la firma',
   })
   @IsOptional()
   @IsString()

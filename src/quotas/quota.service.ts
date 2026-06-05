@@ -8,6 +8,8 @@ import {
 } from 'generated/prisma/enums';
 import { PrismaService, PrismaTx } from 'src/db/prisma.service';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 
 @Injectable()
 export class QuotaService {
@@ -16,6 +18,7 @@ export class QuotaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly notification: NotificationService,
   ) {}
 
   /**
@@ -101,14 +104,34 @@ export class QuotaService {
   }
 
   /**
-   * Cron mensual: genera el periodo del mes siguiente y asigna a todos los miembros activos.
-   * Si no hay configuración, simplemente no hace nada.
+   * Reconciliación idempotente: garantiza que existan los QuotaPeriod del mes
+   * actual y del mes siguiente (con sus QuotaPayment asignados a los miembros
+   * activos). Diseñada para correr a diario y en el arranque del servidor, de
+   * forma que si un disparo del cron se pierde (servidor caído el 1ro), la
+   * siguiente ejecución la recupera automáticamente.
+   *
+   * Costo: en días donde el periodo ya existe, solo hace una lectura indexada
+   * por periodo y termina. El insert masivo de pagos ocurre una sola vez al mes
+   * (cuando el periodo aún no existía).
+   *
+   * Si no hay configuración o el sistema no fue inicializado, no hace nada.
    */
-  async generateMonthlyPeriod() {
+  async ensurePeriodsExist() {
     const org = await this.prisma.organization.findFirst();
     if (!org?.quotaDueDay || !org.moduleQuotes) {
       this.logger.log(
-        'Sistema de cuotas no configurado, saltando generación mensual',
+        'Sistema de cuotas no configurado, saltando aseguramiento de periodos',
+      );
+      return;
+    }
+
+    // Solo operar si el admin ya inicializó el sistema.
+    const anyPeriod = await this.prisma.quotaPeriod.findFirst({
+      select: { id: true },
+    });
+    if (!anyPeriod) {
+      this.logger.log(
+        'Sistema de cuotas no inicializado, saltando aseguramiento de periodos',
       );
       return;
     }
@@ -118,25 +141,45 @@ export class QuotaService {
     });
     if (quoteAmounts.length === 0) {
       this.logger.log(
-        'No hay montos de cuota definidos, saltando generación mensual',
+        'No hay montos de cuota definidos, saltando aseguramiento de periodos',
       );
       return;
     }
-
-    // Solo generar si ya hay al menos un periodo (sistema inicializado)
-    const anyPeriod = await this.prisma.quotaPeriod.findFirst();
-    if (!anyPeriod) {
-      this.logger.log(
-        'Sistema de cuotas no inicializado, saltando generación mensual',
-      );
-      return;
-    }
-
     const totalAmount = quoteAmounts.reduce((sum, q) => sum + q.amount, 0);
-    const { year, month } = this.getNextMonth();
-    const dueDate = this.buildDueDate(year, month, org.quotaDueDay);
 
-    await this.prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const current = { year: now.getFullYear(), month: now.getMonth() + 1 };
+    const next = this.getNextMonth();
+
+    for (const { year, month } of [current, next]) {
+      await this.ensurePeriod(year, month, org.quotaDueDay, totalAmount);
+    }
+  }
+
+  /**
+   * Asegura un único periodo (year/month) de forma idempotente.
+   *
+   * Guard barato: si el periodo ya existe, retorna sin tocar la tabla de
+   * miembros ni la de pagos (sus QuotaPayment se crearon en la misma
+   * transacción atómica, así que existir implica estar completo). El upsert
+   * dentro de la transacción protege contra carreras (cron + bootstrap o
+   * múltiples instancias ejecutando a la vez).
+   */
+  private async ensurePeriod(
+    year: number,
+    month: number,
+    quotaDueDay: number,
+    totalAmount: number,
+  ) {
+    const existing = await this.prisma.quotaPeriod.findUnique({
+      where: { year_month: { year, month } },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    const dueDate = this.buildDueDate(year, month, quotaDueDay);
+
+    const memberIds = await this.prisma.$transaction(async (tx) => {
       const period = await tx.quotaPeriod.upsert({
         where: { year_month: { year, month } },
         create: { year, month, amount: totalAmount, dueDate },
@@ -161,7 +204,30 @@ export class QuotaService {
       this.logger.log(
         `Periodo ${month}/${year} generado, ${members.length} miembros asignados`,
       );
+      return members.map((m) => m.id);
     });
+
+    // Aviso in-app masivo a todos los miembros (fuera de la transacción).
+    if (memberIds.length > 0) {
+      void this.notification
+        .broadcastInApp({
+          userIds: memberIds,
+          templateCode: TriggerKey.QUOTA_NEW_PERIOD,
+          triggerKey: TriggerKey.QUOTA_NEW_PERIOD,
+          link: links.quotas(),
+          context: {
+            month,
+            year,
+            amount: totalAmount.toFixed(2),
+            dueDate: dueDate.toLocaleDateString('es-PE'),
+          },
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Error difundiendo QUOTA_NEW_PERIOD: ${err.message}`,
+          ),
+        );
+    }
   }
 
   /**
@@ -183,31 +249,104 @@ export class QuotaService {
           status: Status.ACTIVE,
         },
       },
-      select: { id: true, userId: true },
+      select: {
+        id: true,
+        userId: true,
+        period: {
+          select: { month: true, year: true, amount: true, dueDate: true },
+        },
+      },
     });
 
-    if (overduePayments.length > 0) {
-      await this.prisma.quotaPayment.updateMany({
-        where: { id: { in: overduePayments.map((p) => p.id) } },
-        data: { status: PaymentStatus.EXPIRADO },
+    if (overduePayments.length === 0) return;
+
+    await this.prisma.quotaPayment.updateMany({
+      where: { id: { in: overduePayments.map((p) => p.id) } },
+      data: { status: PaymentStatus.EXPIRADO },
+    });
+
+    this.logger.log(
+      `${overduePayments.length} pagos marcados como EXPIRADO (mora)`,
+    );
+
+    // Agrupar la mora recién detectada por usuario (monto total y periodos).
+    const byUser = new Map<
+      string,
+      { amount: number; count: number; firstDueDate: Date; period: string }
+    >();
+    for (const p of overduePayments) {
+      const entry = byUser.get(p.userId);
+      if (entry) {
+        entry.amount += p.period.amount;
+        entry.count += 1;
+        if (p.period.dueDate < entry.firstDueDate)
+          entry.firstDueDate = p.period.dueDate;
+      } else {
+        byUser.set(p.userId, {
+          amount: p.period.amount,
+          count: 1,
+          firstDueDate: p.period.dueDate,
+          period: `${p.period.month}/${p.period.year}`,
+        });
+      }
+    }
+
+    // Aviso de mora por usuario (in-app + email; crítico).
+    for (const [userId, info] of byUser) {
+      void this.notification
+        .notify({
+          userId,
+          templateCode: TriggerKey.QUOTA_OVERDUE,
+          triggerKey: TriggerKey.QUOTA_OVERDUE,
+          link: links.quotas(),
+          context: {
+            amount: info.amount.toFixed(2),
+            dueDate: info.firstDueDate.toLocaleDateString('es-PE'),
+            period: info.count > 1 ? `${info.count} cuotas` : info.period,
+          },
+        })
+        .catch((err) =>
+          this.logger.error(
+            `Error notificando mora a ${userId}: ${err.message}`,
+          ),
+        );
+    }
+
+    // Bloquear miembros si moraAutoBlock está activado
+    if (org.moraAutoBlock) {
+      const candidateIds = [...byUser.keys()];
+      // Solo los que aún no están bloqueados (para notificar exactamente a esos).
+      const toBlock = await this.prisma.user.findMany({
+        where: {
+          id: { in: candidateIds },
+          status: { not: UserStatus.BLOCKED },
+        },
+        select: { id: true },
       });
 
-      this.logger.log(
-        `${overduePayments.length} pagos marcados como EXPIRADO (mora)`,
-      );
-
-      // Bloquear miembros si moraAutoBlock está activado
-      if (org.moraAutoBlock) {
-        const userIds = [...new Set(overduePayments.map((p) => p.userId))];
+      if (toBlock.length > 0) {
         await this.prisma.user.updateMany({
-          where: {
-            id: { in: userIds },
-            status: { not: UserStatus.BLOCKED },
-          },
+          where: { id: { in: toBlock.map((u) => u.id) } },
           data: { status: UserStatus.BLOCKED },
         });
+        this.logger.log(`${toBlock.length} miembros bloqueados por mora`);
 
-        this.logger.log(`${userIds.length} miembros bloqueados por mora`);
+        for (const u of toBlock) {
+          const info = byUser.get(u.id);
+          void this.notification
+            .notify({
+              userId: u.id,
+              templateCode: TriggerKey.MEMBER_BLOCKED,
+              triggerKey: TriggerKey.MEMBER_BLOCKED,
+              link: links.quotas(),
+              context: { amount: (info?.amount ?? 0).toFixed(2) },
+            })
+            .catch((err) =>
+              this.logger.error(
+                `Error notificando bloqueo a ${u.id}: ${err.message}`,
+              ),
+            );
+        }
       }
     }
   }

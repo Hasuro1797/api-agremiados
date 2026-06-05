@@ -96,8 +96,18 @@ export class InvoicePdfService {
       [
         { text: 'CANT.', style: 'th', alignment: 'center', fillColor: primary },
         { text: 'DESCRIPCIÓN', style: 'th', fillColor: primary },
-        { text: 'V. UNIT.', style: 'th', alignment: 'right', fillColor: primary },
-        { text: 'IMPORTE', style: 'th', alignment: 'right', fillColor: primary },
+        {
+          text: 'V. UNIT.',
+          style: 'th',
+          alignment: 'right',
+          fillColor: primary,
+        },
+        {
+          text: 'IMPORTE',
+          style: 'th',
+          alignment: 'right',
+          fillColor: primary,
+        },
       ],
       ...invoice.details.map((d, i) => {
         const unitPrice = d.unitPriceWithoutIgv ?? d.price;
@@ -541,4 +551,3 @@ export class InvoicePdfService {
     return this.pdf.generate(docDefinition);
   }
 }
-

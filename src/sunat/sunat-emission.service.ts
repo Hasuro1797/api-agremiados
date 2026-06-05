@@ -7,12 +7,15 @@ import {
   BillingDocType,
   DocumentType,
   InvoiceStatus,
+  Role,
   SunatDocType,
   SunatStatus,
 } from 'generated/prisma/enums';
 import { PrismaService } from 'src/db/prisma.service';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { BillingMailService } from 'src/mail/billing-mail.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { DocumentSeriesService } from 'src/settings/billing/document-series/document-series.service';
 import { XmlBuilderService } from './xml-builder/xml-builder.service';
 import { SignatureService } from './signature/signature.service';
@@ -61,6 +64,7 @@ export class SunatEmissionService {
     private readonly cloudinary: CloudinaryService,
     private readonly invoicePdf: InvoicePdfService,
     private readonly billingMail: BillingMailService,
+    private readonly notification: NotificationService,
   ) {}
 
   /**
@@ -158,7 +162,7 @@ export class SunatEmissionService {
       }
 
       // 1. Serie + correlativo (reusar si ya se asignó en un intento previo).
-      const { serie, sequential, seriesConfigId } = await this.ensureSeries(
+      const { serie, sequential } = await this.ensureSeries(
         invoice.id,
         config.id,
         invoice.sunatDocType,
@@ -267,6 +271,30 @@ export class SunatEmissionService {
           ...(accepted ? { status: InvoiceStatus.FACTURADO } : {}),
         },
       });
+
+      // Avisar al agremiado que su comprobante (factura/boleta) fue emitido.
+      if (accepted && !isNote && invoice.userId) {
+        const total =
+          (invoice.totalTaxable ?? 0) +
+          (invoice.totalExempt ?? 0) +
+          (invoice.totalUnaffected ?? 0) +
+          (invoice.totalIgv ?? 0) +
+          (invoice.totalIsc ?? 0) +
+          (invoice.totalOtherCharges ?? 0);
+        void this.notification
+          .notify({
+            userId: invoice.userId,
+            templateCode: TriggerKey.INVOICE_ISSUED,
+            triggerKey: TriggerKey.INVOICE_ISSUED,
+            link: links.invoice(invoice.id),
+            context: {
+              serie,
+              number: sequential,
+              total: total.toFixed(2),
+            },
+          })
+          .catch(() => undefined);
+      }
 
       // 8. Generar y archivar el PDF (representación impresa) si fue aceptado.
       if (accepted) {
@@ -520,7 +548,7 @@ export class SunatEmissionService {
 
   private async markError(invoiceId: string, message: string, code?: string) {
     this.logger.error(`Emisión SUNAT ${invoiceId}: ${message}`);
-    await this.prisma.invoiceHeader.update({
+    const updated = await this.prisma.invoiceHeader.update({
       where: { id: invoiceId },
       data: {
         sunatStatus: SunatStatus.ERROR,
@@ -528,7 +556,22 @@ export class SunatEmissionService {
         ...(code ? { sunatResponseCode: code } : {}),
         sunatAttempts: { increment: 1 },
       },
+      select: { orderNumber: true, sunatAttempts: true },
     });
+
+    // Alertar a tesorería/admins solo cuando se agotan los reintentos (una vez),
+    // no en cada intento fallido (evita spam).
+    if (updated.sunatAttempts >= MAX_SUNAT_ATTEMPTS) {
+      void this.notification
+        .notifyStaff({
+          templateCode: TriggerKey.INVOICE_FAILED,
+          triggerKey: TriggerKey.INVOICE_FAILED,
+          link: links.adminInvoice(invoiceId),
+          roles: [Role.TREASURER, Role.ADMIN, Role.SUPERADMIN],
+          context: { orderNumber: updated.orderNumber, error: message },
+        })
+        .catch(() => undefined);
+    }
   }
 
   /** Cron: reintenta comprobantes en ERROR/PENDING que no superaron el máximo. */

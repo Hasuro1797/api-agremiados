@@ -23,7 +23,9 @@ export class DocumentSeriesEntity {
   @Field(() => SunatDocType)
   tipoDoc!: SunatDocType;
 
-  @Field(() => String, { description: 'Serie del comprobante (ej: F001, B001)' })
+  @Field(() => String, {
+    description: 'Serie del comprobante (ej: F001, B001)',
+  })
   serie!: string;
 
   @Field(() => Int, { description: 'Próximo correlativo a usar' })
@@ -48,7 +50,8 @@ export class DocumentSeriesEntity {
   isNearExhaustion!: boolean;
 
   @Field(() => Int, {
-    description: 'Cantidad de comprobantes que aún pueden emitirse en esta serie.',
+    description:
+      'Cantidad de comprobantes que aún pueden emitirse en esta serie.',
   })
   remainingCapacity!: number;
 }

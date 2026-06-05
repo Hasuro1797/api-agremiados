@@ -6,6 +6,8 @@ import {
 } from 'generated/prisma/client';
 import { PrismaService } from 'src/db/prisma.service';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { CreateReservationInput } from './dto/create-reservation.input';
 import { UpdateReservationInput } from './dto/update-reservation.input';
 import { FiltersReservationInput } from './dto/filters.args';
@@ -24,6 +26,7 @@ export class ReservationService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly notification: NotificationService,
   ) {}
 
   async create(
@@ -265,7 +268,7 @@ export class ReservationService {
     } else if (reservation.price) {
       estimatedPrice = reservation.price;
     }
-    return this.prismaService.reservationRequest.create({
+    const request = await this.prismaService.reservationRequest.create({
       data: { ...input, userId, estimatedPrice },
       include: {
         reservation: { include: RESERVATION_WITH_IMAGES },
@@ -274,6 +277,23 @@ export class ReservationService {
         },
       },
     });
+
+    // Avisar a los admins de la nueva solicitud pendiente.
+    void this.notification
+      .notifyStaff({
+        templateCode: TriggerKey.RESERVATION_REQUESTED,
+        triggerKey: TriggerKey.RESERVATION_REQUESTED,
+        link: links.adminReservation(request.id),
+        context: {
+          space: request.reservation.title,
+          date: new Date(request.startDate).toLocaleString('es-PE'),
+          memberName:
+            `${request.user.name} ${request.user.paternalSurname ?? ''}`.trim(),
+        },
+      })
+      .catch(() => undefined);
+
+    return request;
   }
 
   async findAllRequests(
@@ -375,6 +395,7 @@ export class ReservationService {
   ) {
     const request = await this.prismaService.reservationRequest.findUnique({
       where: { id: input.id },
+      include: { reservation: { select: { title: true } } },
     });
     if (!request) throw new BadRequestException('Solicitud no encontrada');
     if (request.status !== ReservationRequestStatus.PENDIENTE) {
@@ -401,6 +422,32 @@ export class ReservationService {
         adminComment: input.adminComment,
       } as Prisma.InputJsonValue,
     });
+
+    // Avisar al agremiado el resultado de su solicitud.
+    if (
+      input.status === ReservationRequestStatus.APROBADO ||
+      input.status === ReservationRequestStatus.RECHAZADO
+    ) {
+      const approved = input.status === ReservationRequestStatus.APROBADO;
+      void this.notification
+        .notify({
+          userId: request.userId,
+          templateCode: approved
+            ? TriggerKey.RESERVATION_APPROVED
+            : TriggerKey.RESERVATION_REJECTED,
+          triggerKey: approved
+            ? TriggerKey.RESERVATION_APPROVED
+            : TriggerKey.RESERVATION_REJECTED,
+          link: links.reservation(request.id),
+          context: {
+            space: request.reservation.title,
+            date: new Date(request.startDate).toLocaleString('es-PE'),
+            reason: input.adminComment ?? 'Sin comentarios',
+          },
+        })
+        .catch(() => undefined);
+    }
+
     return updated;
   }
 

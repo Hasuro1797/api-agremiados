@@ -7,6 +7,8 @@ import {
 } from 'generated/prisma/client';
 import { PrismaService } from 'src/db/prisma.service';
 import { AuditLogService } from 'src/audit-log/audit-log.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { FiltersActivityInput } from './dto';
 import { CreateActivityInput } from './dto/create-activity.input';
 import { UpdateActivityInput } from './dto/update-academic.input';
@@ -31,6 +33,7 @@ export class ActivityService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly auditLog: AuditLogService,
+    private readonly notification: NotificationService,
   ) {}
 
   async create(createActivityInput: CreateActivityInput, userId?: string) {
@@ -314,6 +317,15 @@ export class ActivityService {
 
   async changeStatusActivity(ids: number[], status: Status, userId?: string) {
     console.log('IDs a cambiar estado:', ids, 'Nuevo estado:', status);
+    // Solo notificamos las que pasan de NO publicadas a ACTIVE (evita reenvíos).
+    const newlyPublished =
+      status === Status.ACTIVE
+        ? await this.prismaService.activity.findMany({
+            where: { id: { in: ids }, status: { not: Status.ACTIVE } },
+            select: { id: true, title: true, date: true, venue: true },
+          })
+        : [];
+
     await this.prismaService.activity.updateMany({
       where: { id: { in: ids } },
       data: { status },
@@ -327,6 +339,23 @@ export class ActivityService {
         details: { field: 'status', to: status },
       })),
     );
+
+    // Aviso in-app masivo por cada actividad recién publicada.
+    for (const activity of newlyPublished) {
+      void this.notification
+        .broadcastToActiveMembers({
+          templateCode: TriggerKey.ACTIVITY_CREATED,
+          triggerKey: TriggerKey.ACTIVITY_CREATED,
+          link: links.activity(activity.id),
+          context: {
+            title: activity.title,
+            date: activity.date.toLocaleDateString('es-PE'),
+            place: activity.venue ?? 'Por confirmar',
+          },
+        })
+        .catch(() => undefined);
+    }
+
     return true;
   }
 

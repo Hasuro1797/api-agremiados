@@ -1033,6 +1033,8 @@ model Notification {
   sentAt     DateTime?
   readAt     DateTime?
   error      String?
+  triggerKey String? // catalogo de origen (ej: "ACTIVITY_CREATED"); para iconos/agrupacion en el front
+  link       String? // ruta relativa para navegar al hacer click (ej: "/actividades/42"); null = solo aviso
   metadata   Json? // datos adicionales del contexto
 
   user     User                  @relation(fields: [userId], references: [id], onDelete: Cascade)

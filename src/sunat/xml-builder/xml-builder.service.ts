@@ -325,15 +325,18 @@ export class XmlBuilderService {
     const items = noteData.items;
     const docTotals = calcDocTotals(items);
 
-    const xml = create({ version: '1.0', encoding: 'UTF-8' }).ele('CreditNote', {
-      xmlns: 'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2',
-      'xmlns:cac':
-        'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
-      'xmlns:cbc':
-        'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
-      'xmlns:ext':
-        'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
-    });
+    const xml = create({ version: '1.0', encoding: 'UTF-8' }).ele(
+      'CreditNote',
+      {
+        xmlns: 'urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2',
+        'xmlns:cac':
+          'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+        'xmlns:cbc':
+          'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+        'xmlns:ext':
+          'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+      },
+    );
 
     // 1. UBL Extensions (firma)
     const ublExtensions = xml.ele('ext:UBLExtensions');
@@ -386,7 +389,10 @@ export class XmlBuilderService {
     const signature = xml.ele('cac:Signature');
     signature.ele('cbc:ID').txt(`IDSign${company.ruc}`);
     const signatoryParty = signature.ele('cac:SignatoryParty');
-    signatoryParty.ele('cac:PartyIdentification').ele('cbc:ID').txt(company.ruc);
+    signatoryParty
+      .ele('cac:PartyIdentification')
+      .ele('cbc:ID')
+      .txt(company.ruc);
     signatoryParty
       .ele('cac:PartyName')
       .ele('cbc:Name')
@@ -409,9 +415,10 @@ export class XmlBuilderService {
         schemeURI: 'urn:pe:gob:sunat:cpe:see:gem:catalogos:catalogo06',
       })
       .txt(company.ruc);
-    supplierParty.ele('cac:PartyLegalEntity').ele('cbc:RegistrationName').txt(
-      company.razonSocial,
-    );
+    supplierParty
+      .ele('cac:PartyLegalEntity')
+      .ele('cbc:RegistrationName')
+      .txt(company.razonSocial);
 
     // 7. Cliente
     const customer = xml.ele('cac:AccountingCustomerParty');

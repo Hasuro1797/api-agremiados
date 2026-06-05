@@ -836,6 +836,12 @@ type NotificationEntity {
   body: String!
   channel: NotificationChannel!
   status: NotificationStatus!
+
+  """Trigger de origen (ej: "ACTIVITY_CREATED"), para íconos/agrupación"""
+  triggerKey: String
+
+  """Ruta relativa para navegar al hacer click; null = solo aviso"""
+  link: String
   readAt: DateTime
   createdAt: DateTime!
 }
@@ -867,6 +873,42 @@ type NotificationPreferenceEntity {
   triggerKey: String!
   channel: NotificationChannel!
   enabled: Boolean!
+}
+
+type NotificationTriggerEntity {
+  """triggerKey / code del template"""
+  key: String!
+  label: String!
+  description: String!
+
+  """Agrupación para la UI"""
+  category: String!
+
+  """MEMBER o ADMIN"""
+  audience: String!
+
+  """Si true, no se puede silenciar (ignora preferencias)"""
+  isCritical: Boolean!
+
+  """Canales por defecto"""
+  defaultChannels: [NotificationChannel!]!
+
+  """Variables disponibles en el template"""
+  variables: [String!]!
+
+  """Patrón de ruta a la que navega el click; null = solo aviso"""
+  linkPattern: String
+}
+
+type AnnouncementResultEntity {
+  """Total de destinatarios resueltos"""
+  recipients: Int!
+
+  """Notificaciones in-app creadas"""
+  inApp: Int!
+
+  """Correos encolados para envío en segundo plano"""
+  emailQueued: Int!
 }
 
 type DashboardStats {
@@ -1575,6 +1617,11 @@ type Query {
   mySupports(status: SupportStatus, priority: Priority, categoryId: Int, search: String, page: Int = 1, pageSize: Int = 20): SupportPaginated!
   support(id: Int!): Support!
   myNotifications(page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false): NotificationsPaginated!
+
+  """
+  Catálogo de triggers para pintar la pantalla de preferencias. Filtra por audiencia: los agremiados solo ven los MEMBER.
+  """
+  notificationCatalog: [NotificationTriggerEntity!]!
   myNotificationPreferences: [NotificationPreferenceEntity!]!
   adminUserNotifications(userId: String!, page: Int = 1, pageSize: Int = 20, unreadOnly: Boolean = false): [NotificationEntity!]!
   getDashboardStats(memberFilters: FiltersMemberInput, surveyFilters: FiltersSurveyInput, reservationFilters: ReservationRequestFiltersInput): DashboardStats!
@@ -1909,6 +1956,14 @@ type Mutation {
   """Activar o desactivar una regla de automatización"""
   toggleAutomationRule(id: Int!): AutomationRuleEntity!
 
+  """Eliminar una regla de automatización"""
+  deleteAutomationRule(id: Int!): AutomationRuleEntity!
+
+  """
+  Ejecuta una regla de inmediato (ignora el guard diario). Devuelve el número de notificaciones generadas. Útil para probar la regla.
+  """
+  runAutomationRule(id: Int!): Int!
+
   """Crear o actualizar la configuración de facturación SUNAT"""
   upsertBillingConfig(input: UpsertBillingConfigInput!): BillingConfigEntity!
 
@@ -1990,6 +2045,7 @@ type Mutation {
   markNotificationRead(id: Int!): Boolean!
   markAllNotificationsRead: Int!
   updateNotificationPreference(input: UpdateNotificationPreferenceInput!): NotificationPreferenceEntity!
+  sendAnnouncement(input: SendAnnouncementInput!): AnnouncementResultEntity!
 
   """
   Reintenta la emisión SUNAT de un comprobante PAGADO (estado ERROR/PENDING o reenvío manual).
@@ -2787,6 +2843,30 @@ input UpdateNotificationPreferenceInput {
   triggerKey: String!
   channel: NotificationChannel!
   enabled: Boolean!
+}
+
+input SendAnnouncementInput {
+  subject: String!
+
+  """Cuerpo del mensaje (HTML simple permitido)"""
+  message: String!
+
+  """Canales: solo IN_APP y/o EMAIL"""
+  channels: [NotificationChannel!]!
+  audience: AnnouncementAudience!
+
+  """IDs de usuarios (requerido si audience = SPECIFIC)"""
+  userIds: [String!]
+
+  """Ruta relativa opcional para navegar al hacer click"""
+  link: String
+}
+
+"""Destinatarios de un comunicado manual"""
+enum AnnouncementAudience {
+  ALL_MEMBERS
+  ACTIVE_MEMBERS
+  SPECIFIC
 }
 
 input GeneratePaymentTokenInput {

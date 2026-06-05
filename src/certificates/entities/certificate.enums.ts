@@ -1,8 +1,5 @@
 import { registerEnumType } from '@nestjs/graphql';
-import {
-  CertificateStatus,
-  CertificateType,
-} from 'generated/prisma/enums';
+import { CertificateStatus, CertificateType } from 'generated/prisma/enums';
 
 registerEnumType(CertificateType, {
   name: 'CertificateType',

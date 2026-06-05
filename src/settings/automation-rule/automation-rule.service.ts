@@ -55,4 +55,9 @@ export class AutomationRuleService {
       data: { isActive: !rule.isActive },
     });
   }
+
+  async delete(id: number) {
+    await this.findOne(id);
+    return this.prisma.automationRule.delete({ where: { id } });
+  }
 }

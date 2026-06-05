@@ -25,9 +25,7 @@ export class BillingConfigResolver {
     name: 'upsertBillingConfig',
     description: 'Crear o actualizar la configuración de facturación SUNAT',
   })
-  upsertBillingConfig(
-    @Args('input') input: UpsertBillingConfigInput,
-  ) {
+  upsertBillingConfig(@Args('input') input: UpsertBillingConfigInput) {
     return this.billingConfigService.upsertBillingConfig(input);
   }
 
@@ -50,9 +48,7 @@ export class BillingConfigResolver {
     description:
       'Alternar entre entorno beta/homologación (false) y producción SUNAT (true). Requiere certificado activo y al menos una serie configurada para activar producción.',
   })
-  toggleBillingProduction(
-    @Args('production') production: boolean,
-  ) {
+  toggleBillingProduction(@Args('production') production: boolean) {
     return this.billingConfigService.toggleProductionMode(production);
   }
 

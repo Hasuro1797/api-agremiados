@@ -44,7 +44,8 @@ export class PaymentCancellationEntity {
 
   @Field(() => String, {
     nullable: true,
-    description: 'Id de la Nota de Crédito que originó la devolución, si aplica',
+    description:
+      'Id de la Nota de Crédito que originó la devolución, si aplica',
   })
   creditNoteId?: string;
 

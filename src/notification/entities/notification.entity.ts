@@ -34,6 +34,19 @@ export class NotificationEntity {
   @Field(() => NotificationStatus)
   status!: NotificationStatus;
 
+  @Field(() => String, {
+    nullable: true,
+    description:
+      'Trigger de origen (ej: "ACTIVITY_CREATED"), para íconos/agrupación',
+  })
+  triggerKey?: string;
+
+  @Field(() => String, {
+    nullable: true,
+    description: 'Ruta relativa para navegar al hacer click; null = solo aviso',
+  })
+  link?: string;
+
   @Field(() => Date, { nullable: true })
   readAt?: Date;
 

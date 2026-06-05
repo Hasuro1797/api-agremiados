@@ -30,6 +30,8 @@ import { InvoiceService } from 'src/invoice/invoice.service';
 import { CreateInvoiceLine } from 'src/invoice/invoice.types';
 import { BillingMailService } from 'src/mail/billing-mail.service';
 import { SunatEmissionService } from 'src/sunat/sunat-emission.service';
+import { NotificationService } from 'src/notification/notification.service';
+import { TriggerKey, links } from 'src/notification/notification-catalog';
 import { ConfirmPaymentInput } from './dto/confirm-payment.input';
 import { GeneratePaymentTokenInput } from './dto/generate-payment-token.input';
 import { PaymentTargetType } from './dto/payment-target.enum';
@@ -76,6 +78,7 @@ export class PaymentService {
     private readonly config: ConfigService<EnvConfig>,
     private readonly sunatEmission: SunatEmissionService,
     private readonly billingMail: BillingMailService,
+    private readonly notification: NotificationService,
   ) {}
 
   // ============================================================
@@ -963,21 +966,27 @@ export class PaymentService {
       return { received: true };
     }
 
-    // Validar firma salvo códigos excluidos
     const code = body.code ?? '';
-    if (
-      code &&
-      !CANCELLED_CODES.includes(code) &&
-      body.payloadHttp &&
-      body.signature
-    ) {
-      const keyHash = this.config.get('IZIPAY_KEY_HASH', { infer: true })!;
-      if (!checkSignature(body.payloadHttp, keyHash, body.signature)) {
-        throw new BadRequestException('Firma IPN no válida');
+    const outcome = this.codeToOutcome(code);
+
+    // Autenticación del IPN (fail-closed). Las cancelaciones no otorgan valor,
+    // así que se aceptan sin firma; cualquier otro resultado (PAGADO/FALLIDO)
+    // EXIGE un IPN auténtico: firma HMAC válida y ligada a ESTA transacción, o
+    // confirmación server-to-server contra Izipay. Un IPN sin autenticar nunca
+    // puede marcar una factura como pagada.
+    if (outcome !== 'CANCELLED') {
+      const authentic = await this.verifyIpnAuthenticity(
+        body,
+        payment.invoice.orderNumber,
+      );
+      if (!authentic) {
+        this.logger.warn(
+          `IPN rechazado: no autenticado (transactionId=${body.transactionId})`,
+        );
+        throw new BadRequestException('IPN no autenticado');
       }
     }
 
-    const outcome = this.codeToOutcome(code);
     try {
       await this.applyOutcome(payment.id, outcome, body);
     } catch (err) {
@@ -1109,6 +1118,63 @@ export class PaymentService {
     return 'FAILED';
   }
 
+  /**
+   * Autentica un IPN antes de aplicarlo. Devuelve true solo si:
+   *  - la firma HMAC sobre `payloadHttp` es válida Y el `payloadHttp` declara el
+   *    mismo `transactionId` con el que ubicamos la transacción (impide reusar
+   *    una firma válida de otra transacción para pagar otra factura), o
+   *  - en su defecto, Izipay confirma server-to-server que está pagada.
+   * Nunca confía en el cuerpo del IPN sin una de esas dos pruebas.
+   */
+  private async verifyIpnAuthenticity(
+    body: { transactionId?: string; payloadHttp?: string; signature?: string },
+    orderNumber: string,
+  ): Promise<boolean> {
+    const keyHash = this.config.get('IZIPAY_KEY_HASH', { infer: true })!;
+
+    if (
+      body.payloadHttp &&
+      body.signature &&
+      checkSignature(body.payloadHttp, keyHash, body.signature) &&
+      this.payloadDeclaresTransaction(body.payloadHttp, body.transactionId)
+    ) {
+      return true;
+    }
+
+    if (!body.transactionId) return false;
+
+    // Sin firma utilizable: preguntar directamente a Izipay (no confiar en el
+    // cuerpo recibido).
+    try {
+      const verified = await this.izipay.verifyTransaction(
+        body.transactionId,
+        orderNumber,
+      );
+      return this.verifiedAsPaid(verified);
+    } catch (err) {
+      this.logger.error(
+        `IPN: verifyTransaction falló para ${body.transactionId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return false;
+    }
+  }
+
+  /** El payload firmado debe declarar el mismo transactionId usado en el lookup. */
+  private payloadDeclaresTransaction(
+    payloadHttp: string,
+    transactionId?: string,
+  ): boolean {
+    if (!transactionId) return false;
+    try {
+      const parsed = JSON.parse(payloadHttp) as { transactionId?: string };
+      return parsed.transactionId === transactionId;
+    } catch {
+      return false;
+    }
+  }
+
   /** Aplica el resultado al invoice/transacción/target dentro de una transacción. */
   private async applyOutcome(
     paymentId: string,
@@ -1176,9 +1242,43 @@ export class PaymentService {
       void this.sunatEmission.emitInvoice(paidInvoiceId).catch((err) => {
         this.logger.error(`Emisión SUNAT falló para ${paidInvoiceId}`, err);
       });
+
+      // Aviso de pago de cuota(s) confirmado (independiente del comprobante).
+      void this.notifyQuotaPaymentConfirmed(paidInvoiceId).catch(
+        () => undefined,
+      );
     }
 
     return map.invoice;
+  }
+
+  /** Notifica al agremiado que el pago de su(s) cuota(s) fue confirmado. */
+  private async notifyQuotaPaymentConfirmed(invoiceId: string): Promise<void> {
+    const quotas = await this.prisma.quotaPayment.findMany({
+      where: { invoiceId },
+      include: {
+        period: { select: { month: true, year: true, amount: true } },
+      },
+    });
+    if (quotas.length === 0) return; // el invoice no era de cuotas
+
+    const amount = quotas.reduce((sum, q) => sum + q.period.amount, 0);
+    const period =
+      quotas.length > 1
+        ? `${quotas.length} cuotas`
+        : `${quotas[0].period.month}/${quotas[0].period.year}`;
+
+    await this.notification.notify({
+      userId: quotas[0].userId,
+      templateCode: TriggerKey.QUOTA_PAYMENT_CONFIRMED,
+      triggerKey: TriggerKey.QUOTA_PAYMENT_CONFIRMED,
+      link: links.quotaPayments(),
+      context: {
+        amount: amount.toFixed(2),
+        period,
+        paymentCount: quotas.length,
+      },
+    });
   }
 
   /** Pago exitoso: confirmar inscripción / marcar cuota pagada. */

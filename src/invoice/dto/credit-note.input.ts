@@ -1,5 +1,5 @@
 import { Field, InputType } from '@nestjs/graphql';
-import { IsNotEmpty, IsOptional, IsString, Matches } from 'class-validator';
+import { IsNotEmpty, IsString, Matches } from 'class-validator';
 
 @InputType()
 export class VoidInvoiceInput {
@@ -16,7 +16,9 @@ export class VoidInvoiceInput {
 
 @InputType()
 export class CreateCreditNoteInput {
-  @Field(() => String, { description: 'ID del comprobante original (aceptado)' })
+  @Field(() => String, {
+    description: 'ID del comprobante original (aceptado)',
+  })
   @IsString()
   @IsNotEmpty()
   invoiceId!: string;
