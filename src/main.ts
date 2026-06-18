@@ -43,8 +43,14 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
-  app.use(graphqlUploadExpress());
+  // Límites de subida: evita DoS por archivos enormes o muchos archivos.
+  app.use(
+    graphqlUploadExpress({
+      maxFileSize: 5 * 1024 * 1024, // 5 MB por archivo
+      maxFiles: 10,
+    }),
+  );
   await app.listen(PORT);
   logger.log(`Server running on port ${PORT}`);
 }
-bootstrap();
+void bootstrap();

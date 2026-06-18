@@ -135,8 +135,6 @@ export class ActivityService {
       this.prismaService.activity.count({ where }),
     ]);
 
-    console.log('Activities found:', activities?.[0], 'Total matching:', total);
-
     return {
       activities,
       meta: {
@@ -155,7 +153,6 @@ export class ActivityService {
     if (!activity) {
       throw new BadRequestException('Actividad no encontrada');
     }
-    console.log(activity);
     return activity;
   }
 
@@ -176,7 +173,6 @@ export class ActivityService {
     if (!activity) {
       throw new BadRequestException('Actividad no encontrada');
     }
-    console.log(activity);
     return activity;
   }
 
@@ -316,7 +312,6 @@ export class ActivityService {
   }
 
   async changeStatusActivity(ids: number[], status: Status, userId?: string) {
-    console.log('IDs a cambiar estado:', ids, 'Nuevo estado:', status);
     // Solo notificamos las que pasan de NO publicadas a ACTIVE (evita reenvíos).
     const newlyPublished =
       status === Status.ACTIVE

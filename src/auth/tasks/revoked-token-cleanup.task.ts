@@ -33,9 +33,7 @@ export class RevokedTokenCleanupTask {
       for (const record of revokedTokens) {
         try {
           this.jwtService.verify(record.token, { secret: rtSecret });
-          // Token is still valid, keep it in the revoked list
         } catch {
-          // Token expired or invalid — safe to remove
           expiredIds.push(record.id);
         }
       }

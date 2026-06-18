@@ -1,5 +1,6 @@
 import { Args, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { AuthResponse, MessageResponse, UserProfile } from './types/index';
 import {
@@ -22,6 +23,7 @@ export class AuthResolver {
 
   // ─── PUBLIC: Login para agremiados ─────────────────────────
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Mutation(() => AuthResponse, {
     name: 'signinMember',
     description: 'Login para agremiados. Acepta email o DNI como identificador',
@@ -32,6 +34,7 @@ export class AuthResolver {
 
   // ─── PUBLIC: Login para administración ─────────────────────
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Mutation(() => AuthResponse, {
     name: 'signinAdmin',
     description:
@@ -65,6 +68,7 @@ export class AuthResolver {
 
   // ─── PUBLIC: Registro de agremiados ────────────────────────
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Mutation(() => AuthResponse, {
     description:
       'Registro de nuevos agremiados o completar registro para pre-registrados',
@@ -75,6 +79,7 @@ export class AuthResolver {
 
   // ─── PROTECTED: Registro de administradores ─────────────────
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Mutation(() => AuthResponse, {
     description: 'Registro del SUPERADMIN',
     name: 'registerSuperAdmin',
@@ -110,6 +115,7 @@ export class AuthResolver {
 
   // ─── PUBLIC: Forgot password ──────────────────────────────
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Mutation(() => MessageResponse, {
     name: 'forgotPassword',
     description: 'Solicitar recuperación de contraseña. Envía email con enlace',
@@ -122,6 +128,7 @@ export class AuthResolver {
 
   // ─── PUBLIC: Reset password ───────────────────────────────
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Mutation(() => MessageResponse, {
     name: 'resetPassword',
     description: 'Restablecer contraseña usando el token de recuperación',

@@ -383,7 +383,6 @@ export class PaymentService {
         itemId: String(q.id),
       };
     });
-    console.log('Prepared invoice lines for quota payment:', lines);
     const prepared: PreparedCharge = {
       userId: ownerId,
       ...billing,
@@ -396,7 +395,6 @@ export class PaymentService {
       },
       lines,
     };
-    console.log('Prepared charge for quota payment:', prepared);
 
     return this.reserveAndTokenize(prepared, null);
   }

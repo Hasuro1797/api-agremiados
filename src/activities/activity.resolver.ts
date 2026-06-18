@@ -101,7 +101,6 @@ export class ActivityResolver {
     @Args('status', { type: () => String }) status: Status,
     @CurrentUser() user: JwtPayloadWithAccess,
   ) {
-    console.log('IDs a cambiar estado:', ids, 'Nuevo estado:', status);
     return this.activityService.changeStatusActivity(ids, status, user.sub);
   }
 
@@ -114,7 +113,6 @@ export class ActivityResolver {
     @Args('ids', { type: () => [Int] }) ids: number[],
     @CurrentUser() user: JwtPayloadWithAccess,
   ) {
-    console.log('IDs a eliminar:', ids);
     return this.activityService.remove(ids, user.sub);
   }
 

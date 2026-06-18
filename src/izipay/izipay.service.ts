@@ -83,13 +83,13 @@ export class IzipayService {
       const publicKey = this.configService.get('IZIPAY_PUBLIC_KEY', {
         infer: true,
       });
-      console.log('Generating Izipay token with data:', {
-        ...rest,
-        merchantCode,
-        publicKey,
-        transactionId,
-        izipayUrl,
-      });
+      // console.log('Generating Izipay token with data:', {
+      //   ...rest,
+      //   merchantCode,
+      //   publicKey,
+      //   transactionId,
+      //   izipayUrl,
+      // });
       const response = await axios.post(
         `${izipayUrl}/security/v1/Token/Generate`,
         {

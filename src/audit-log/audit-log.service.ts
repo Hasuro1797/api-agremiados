@@ -16,7 +16,6 @@ export interface AuditLogEntry {
 export class AuditLogService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Registra una entrada de auditoría. Puede usar una transacción existente. */
   async log(entry: AuditLogEntry, tx?: PrismaTx) {
     const client = tx ?? this.prisma;
     return client.auditLog.create({
@@ -31,7 +30,6 @@ export class AuditLogService {
     });
   }
 
-  /** Registra múltiples entradas de auditoría en batch. */
   async logMany(entries: AuditLogEntry[], tx?: PrismaTx) {
     const client = tx ?? this.prisma;
     return client.auditLog.createMany({

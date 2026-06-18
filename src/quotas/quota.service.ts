@@ -389,7 +389,6 @@ export class QuotaService {
       include: { period: true },
       orderBy: [{ period: { year: 'asc' } }, { period: { month: 'asc' } }],
     });
-    console.log('Pagos encontrados:', payments);
     return payments.map((p) => ({
       ...p,
       isOverdue: p.status !== PaymentStatus.PAGADO && p.period.dueDate < now,

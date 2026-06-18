@@ -53,8 +53,6 @@ export class OrganizationResolver {
     field: BrandingImageField,
     @Args('file', { type: () => GraphQLUpload }) file: FileUpload,
   ) {
-    console.log('Uploading branding image for field:', field);
-    console.log('Received file promise:', file);
     return this.organizationService.uploadBrandingImage(field, file);
   }
 

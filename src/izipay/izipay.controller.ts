@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Logger, Post } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { PaymentService } from './payment.service';
 
@@ -14,6 +15,7 @@ export class IzipayController {
    * Idempotente y validado por firma.
    */
   @Public()
+  @SkipThrottle()
   @Post('ipn')
   @HttpCode(200)
   async handleIpn(@Body() body: Record<string, unknown>) {

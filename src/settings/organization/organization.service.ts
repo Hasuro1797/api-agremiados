@@ -6,6 +6,7 @@ import { UpdateOrganizationInput } from './dto/update-organization.input';
 import { BrandingImageField } from './dto/branding-image-field.enum';
 import { Prisma } from 'generated/prisma/client';
 import { deriveOrganizationColors } from './color.utils';
+import { assertAllowedImage } from 'src/common/utils/file-validation.util';
 
 const PUBLIC_ORGANIZATION_SELECT = {
   id: true,
@@ -146,6 +147,7 @@ export class OrganizationService {
   async uploadBrandingImage(field: BrandingImageField, file: FileUpload) {
     // Consumir el stream PRIMERO (igual que MediaService) antes de cualquier operación async
     const resolvedFile = await (file as unknown as Promise<FileUpload>);
+    assertAllowedImage(resolvedFile);
     const stream = resolvedFile.createReadStream();
     const response = await this.cloudinary.upload(stream, {
       folder: `organization/${field}`,
@@ -196,7 +198,6 @@ export class OrganizationService {
     }
 
     const publicId = this.extractPublicId(currentUrl);
-    console.log('Deleting image with publicId:', publicId);
     if (publicId) {
       await this.cloudinary.delete(publicId);
     }

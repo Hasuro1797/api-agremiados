@@ -341,9 +341,6 @@ export class AuthService {
 
   // ─── LOGOUT ────────────────────────────────────────────────
   async logout(userId: string, accessToken: string) {
-    console.log(
-      `Cerrando sesión para usuario ${userId}... Revocando access token: ${accessToken ? 'Sí' : 'No'}`,
-    );
     await this.prisma.user.update({
       where: { id: userId },
       data: { refreshToken: null },
@@ -570,7 +567,6 @@ export class AuthService {
   }
 
   async countSuperAdmins() {
-    console.log('Contando superadmins...');
     return await this.prisma.user.count({
       where: {
         role: Role.SUPERADMIN,
