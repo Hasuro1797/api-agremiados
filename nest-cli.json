@@ -6,7 +6,7 @@
     "builder": "swc",
     "typeCheck": false,
     "deleteOutDir": true,
-    "watchAssets": true,
+    "watchAssets": false,
     "assets": ["mail/templates/**/*", "fonts/**/*"]
   }
 }

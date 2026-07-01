@@ -10,7 +10,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "build": "nest build",
+    "build": "nest build && swc generated lib -d . -C module.type=commonjs -C jsc.target=es2023",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
